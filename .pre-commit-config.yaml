@@ -1,0 +1,50 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+  - repo: https://github.com/keith/pre-commit-buildifier
+    rev: 8.0.1
+    hooks:
+      - id: buildifier
+        args: ["--warnings", "all"]
+      - id: buildifier-lint
+        args: ["--warnings", "all"]
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        name: format python (black)
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: sort python imports (isort)
+  - repo: https://github.com/pycqa/flake8
+    rev: "7.1.2" # pick a git hash / tag to point to
+    hooks:
+      - id: flake8
+        name: lint python (flake8)
+        additional_dependencies:
+          [
+            pep8-naming,
+            flake8-pyproject,
+            flake8-docstrings,
+            flake8-bugbear,
+            flake8-pie,
+            flake8-simplify,
+          ]
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.7.0-4
+    hooks:
+      - id: shfmt
+        args: ["-w", "-s", "-i", "4"] # indent with 4 spaces

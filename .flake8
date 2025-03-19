@@ -1,0 +1,40 @@
+[flake8]
+max-line-length = 120
+exclude =
+    # flake8 refuses to support gitignore
+    # no need to traverse .git/
+    .git,
+    # do not inspect cached bytecode
+    __pycache__,
+    # do not traverse the bazel symlinks
+    bazel-*,
+    # do not lint site-packages, etc. in the virtualenv.
+    .venv,
+
+select =
+    A, # flake8-builtins
+    B, # flake8-bugbear
+    B950, # Make sure bugbear line length check is enabled
+    C, # complexity checks
+    # D, # flake8-docstrings/pydocstyle, enable to error on missing docstrings
+    E, # errors
+    F, # built-in pyflakes codes (e.g., unused imports, unused vars)
+    N, # pep8-naming checks (e.g., variable name checks)
+    PIE,  # flake8-pie checks
+    SIM,  # flake8-simplify checks
+    W, # warnings, e.g., syntax errors, deprecations
+
+
+extend-ignore =
+    # black advises to ignore E203 as it is not PEP8 compliant.
+    E203,
+    # disable flake8's own line-length checker for bugbear's better B950 check.
+    E501,
+    # W503 is arguably out-of-step with PEP8.
+    W503,
+    # f-strings are preferred for loguru, do not encourage % interpolation
+    PIE803,
+    # contextlib.suppress is slow, recommending it is probably not worth it.
+    SIM105,
+
+docstring-convention = google

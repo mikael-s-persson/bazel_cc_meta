@@ -1,0 +1,37 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+
+# ============= Public tools =============
+
+py_binary(
+    name = "fix_deps",
+    srcs = ["fix_deps.py"],
+    visibility = ["//visibility:public"],
+)
+
+# Default refresh all script.
+# For custom deviations or skipped tags, see README.md or defs.bzl.
+refresh_cc_meta(
+    name = "refresh_all",
+    visibility = ["//visibility:public"],
+)
+
+# ============= Private tools =============
+
+py_binary(
+    name = "combine_includes_lists",
+    srcs = ["combine_includes_lists.py"],
+    visibility = ["//cc_meta:__subpackages__"],
+)
+
+py_binary(
+    name = "check_direct_deps_exports",
+    srcs = ["check_direct_deps_exports.py"],
+    visibility = ["//cc_meta:__subpackages__"],
+)
+
+sh_binary(
+    name = "run_suppress_stdout",
+    srcs = ["run_suppress_stdout.sh"],
+    visibility = ["//cc_meta:__subpackages__"],
+)
