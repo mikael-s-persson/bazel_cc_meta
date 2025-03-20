@@ -1,0 +1,58 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+cc_library(
+    name = "lowest",
+    hdrs = [
+        "lowest.h",
+    ],
+)
+
+cc_library(
+    name = "middle",
+    srcs = [
+        "middle.cc",
+    ],
+    hdrs = [
+        "middle.h",
+    ],
+    deps = [
+        ":lowest",
+    ],
+)
+
+cc_binary(
+    name = "lowest_printer",
+    srcs = [
+        "lowest_printer.cc",
+    ],
+    deps = [
+        # Should depend on ":lowest", instead of transitively through ":middle".
+        ":middle",
+    ],
+)
+
+cc_test(
+    name = "lowest_test",
+    srcs = [
+        "lowest_test.cc",
+    ],
+    deps = [
+        # Should depend on ":lowest", instead of transitively through ":middle".
+        ":middle",
+    ],
+)
+
+# bazel run //examples/default_good:refresh
+# Expecting dependency_issues.json:
+#  in lowest_test:
+#    not_found = ["examples/default_transitive/lowest.h"]
+#    unused = ["@@//examples/default_transitive:middle"]
+#  in lowest_printer:
+#    not_found = ["examples/default_transitive/lowest.h"]
+#    unused = ["@@//examples/default_transitive:middle"]
+refresh_cc_meta(
+    name = "refresh",
+    targets = ["//examples/default_transitive:all"],
+    visibility = ["//visibility:public"],
+)
