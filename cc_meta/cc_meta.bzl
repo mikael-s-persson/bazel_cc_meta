@@ -439,19 +439,19 @@ def cc_meta_aspect_factory(
         toolchains = use_cc_toolchain(),
         attrs = {
             "_check_direct_deps_exports": attr.label(
-                default = Label("@//bzl:check_direct_deps_exports"),
+                default = Label("@bazel_cc_meta//cc_meta:check_direct_deps_exports"),
                 executable = True,
                 cfg = "exec",
                 doc = "Tool for checking target imports against deps exports.",
             ),
             "_combine_includes_lists": attr.label(
-                default = Label("@//bzl:combine_includes_lists"),
+                default = Label("@bazel_cc_meta//cc_meta:combine_includes_lists"),
                 executable = True,
                 cfg = "exec",
                 doc = "Tool for combining includes dumps.",
             ),
             "_run_suppress_stdout": attr.label(
-                default = Label("@//bzl:run_suppress_stdout"),
+                default = Label("@bazel_cc_meta//cc_meta:run_suppress_stdout"),
                 executable = True,
                 cfg = "exec",
                 doc = "Run a command with stdout to /dev/null.",

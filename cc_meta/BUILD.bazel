@@ -1,5 +1,5 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
 load("@rules_python//python:defs.bzl", "py_binary")
-load("//cc_meta:cc_meta.bzl", "refresh_cc_meta")
 
 # ============= Public tools =============
 

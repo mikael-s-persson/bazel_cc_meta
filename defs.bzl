@@ -7,7 +7,7 @@ load("//cc_meta:cc_meta.bzl", "cc_meta_aspect_factory")
 #
 # In a BUILD file (e.g., //my:BUILD):
 #
-# load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "make_cc_meta_info_mapping", "refresh_cc_meta")
+# load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "make_cc_meta_deviations", "refresh_cc_meta")
 #
 # make_cc_meta_deviations(
 #     name = "my_cc_meta_deviations",
@@ -33,7 +33,7 @@ load("//cc_meta:cc_meta.bzl", "cc_meta_aspect_factory")
 #
 # In a bzl file (e.g., //my:defs.bzl):
 #
-# load("//cc_meta:cc_meta.bzl", "cc_meta_aspect_factory")
+# load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "cc_meta_aspect_factory")
 #
 # my_cc_meta_aspect = cc_meta_aspect_factory(
 #     deviations = [Label("@//my:my_cc_meta_deviations")],
