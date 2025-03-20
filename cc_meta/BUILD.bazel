@@ -17,21 +17,22 @@ refresh_cc_meta(
 )
 
 # ============= Private tools =============
+# Note, targets must be public because they are used by user-side aspects.
 
 py_binary(
     name = "combine_includes_lists",
     srcs = ["combine_includes_lists.py"],
-    visibility = ["//cc_meta:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 py_binary(
     name = "check_direct_deps_exports",
     srcs = ["check_direct_deps_exports.py"],
-    visibility = ["//cc_meta:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "run_suppress_stdout",
     srcs = ["run_suppress_stdout.sh"],
-    visibility = ["//cc_meta:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
