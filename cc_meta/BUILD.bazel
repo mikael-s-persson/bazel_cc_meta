@@ -8,7 +8,7 @@ py_binary(
     srcs = ["fix_deps.py"],
     args = [
         "--buildozer",
-        "$(location @buildozer//:buildozer)",
+        "$(execpath @buildozer//:buildozer)",
     ],
     data = [
         "@buildozer",
