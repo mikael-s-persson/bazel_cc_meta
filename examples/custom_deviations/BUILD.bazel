@@ -1,0 +1,86 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "make_cc_meta_deviations", "refresh_cc_meta")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+cc_library(
+    name = "lowest",
+    hdrs = [
+        "lowest.h",
+    ],
+)
+
+cc_library(
+    name = "middle",
+    srcs = [
+        "middle.cc",
+    ],
+    hdrs = [
+        "middle.h",
+    ],
+    deps = [
+        ":lowest",
+    ],
+    # Ooops! We forgot the cc_meta_forward_exports option, and cannot fix it here (e.g. external dep).
+    # tags = ["cc_meta_forward_exports"],
+)
+
+cc_library(
+    name = "main_wrapper",
+    srcs = [
+        "main_wrapper.cc",
+    ],
+    # Ooops! We forgot the alwayslink option, and cannot fix it here (e.g. external dep).
+    # alwayslink = True,
+)
+
+cc_binary(
+    name = "lowest_printer",
+    srcs = [
+        "lowest_printer.cc",
+    ],
+    deps = [
+        ":main_wrapper",
+        ":middle",
+    ],
+)
+
+cc_test(
+    name = "lowest_test",
+    srcs = [
+        "lowest_test.cc",
+    ],
+    deps = [
+        ":main_wrapper",
+        ":middle",
+    ],
+)
+
+# bazel run //examples/custom_deviations:refresh_with_default
+# Expecting dependency_issues.json to report ":main_wrapper" and ":middle" as unused and "lowest.h" as not_found.
+refresh_cc_meta(
+    name = "refresh_with_default",
+    targets = ["//examples/custom_deviations:all"],
+    visibility = ["//visibility:public"],
+)
+
+# Make a custom deviations set to externally "fix" the bad targets.
+make_cc_meta_deviations(
+    name = "custom_cc_meta_deviations",
+    deviations = {
+        ":main_wrapper": {
+            "alwaysused": True,
+        },
+        ":middle": {
+            "forward_exports": True,
+        },
+    },
+    visibility = ["//visibility:public"],
+)
+
+# bazel run //examples/custom_deviations:refresh_custom
+# Expecting empty dependency_issues.json
+refresh_cc_meta(
+    name = "refresh_custom",
+    cc_meta_aspect = "//examples/custom_deviations:defs.bzl%custom_cc_meta_aspect",
+    targets = ["//examples/custom_deviations:all"],
+    visibility = ["//visibility:public"],
+)

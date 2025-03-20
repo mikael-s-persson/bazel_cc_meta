@@ -1,0 +1,64 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+cc_library(
+    name = "lowest",
+    hdrs = [
+        "lowest.h",
+    ],
+)
+
+cc_library(
+    name = "middle",
+    srcs = [
+        "middle.cc",
+    ],
+    hdrs = [
+        "middle.h",
+    ],
+    textual_hdrs = [
+        "middle_impl.h",
+    ],
+    deps = [
+        ":lowest",
+    ],
+)
+
+cc_library(
+    name = "main_wrapper",
+    srcs = [
+        "main_wrapper.cc",
+    ],
+    alwayslink = True,
+)
+
+cc_binary(
+    name = "middle_printer",
+    srcs = [
+        "middle_printer.cc",
+    ],
+    deps = [
+        ":main_wrapper",
+        ":middle",
+    ],
+)
+
+cc_test(
+    name = "middle_test",
+    srcs = [
+        "middle_test.cc",
+    ],
+    deps = [
+        ":main_wrapper",
+        ":middle",
+    ],
+)
+
+# bazel run //examples/always_link:refresh
+# Expecting empty dependency_issues.json
+# Expecting target_exports.json to have {"alwaysused": true} for ":main_wrapper"
+refresh_cc_meta(
+    name = "refresh",
+    targets = ["//examples/always_link:all"],
+    visibility = ["//visibility:public"],
+)
