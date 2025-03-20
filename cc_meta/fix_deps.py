@@ -49,6 +49,7 @@ if __name__ == "__main__":
         prog="FixDependencies",
         description="Fix dependency issues with Bazel targets.",
     )
+    parser.add_argument("-b", "--buildozer", default="buildozer")
     parser.add_argument("-i", "--issues", default="dependency_issues.json")
     parser.add_argument("-e", "--exports", default="target_exports.json")
     args = parser.parse_args()
@@ -81,7 +82,7 @@ if __name__ == "__main__":
         if buildozer_rm:
             buildozer_process = subprocess.run(
                 [
-                    "buildozer",
+                    args.buildozer,
                     "-k",
                     "-quiet",
                     "remove deps {}".format(" ".join(buildozer_rm)),
@@ -118,7 +119,7 @@ if __name__ == "__main__":
         if buildozer_add:
             buildozer_process = subprocess.run(
                 [
-                    "buildozer",
+                    args.buildozer,
                     "-k",
                     "-quiet",
                     "add deps {}".format(" ".join(buildozer_add)),

@@ -6,6 +6,13 @@ load("@rules_python//python:defs.bzl", "py_binary")
 py_binary(
     name = "fix_deps",
     srcs = ["fix_deps.py"],
+    args = [
+        "--buildozer",
+        "$(location @buildozer//:buildozer)",
+    ],
+    data = [
+        "@buildozer",
+    ],
     visibility = ["//visibility:public"],
 )
 
