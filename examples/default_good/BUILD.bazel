@@ -1,0 +1,53 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+cc_library(
+    name = "lowest",
+    hdrs = [
+        "lowest.h",
+    ],
+)
+
+cc_library(
+    name = "middle",
+    srcs = [
+        "middle.cc",
+    ],
+    hdrs = [
+        "middle.h",
+    ],
+    textual_hdrs = [
+        "middle_impl.h",
+    ],
+    deps = [
+        ":lowest",
+    ],
+)
+
+cc_binary(
+    name = "middle_printer",
+    srcs = [
+        "middle_printer.cc",
+    ],
+    deps = [
+        ":middle",
+    ],
+)
+
+cc_test(
+    name = "middle_test",
+    srcs = [
+        "middle_test.cc",
+    ],
+    deps = [
+        ":middle",
+    ],
+)
+
+# bazel run //examples/default_good:refresh
+# Expecting empty dependency_issues.json
+refresh_cc_meta(
+    name = "refresh",
+    targets = ["//examples/default_good:all"],
+    visibility = ["//visibility:public"],
+)

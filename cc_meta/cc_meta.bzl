@@ -281,7 +281,7 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-MD", "-MM", "-MF", incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
+                user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-MM", "-MF", incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
                 source_file = f.path,
                 # A successful compilation would require all include paths, but:
                 #  '-E' means we only preprocess.
