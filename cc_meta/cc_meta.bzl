@@ -384,6 +384,8 @@ def _cc_meta_aspect_impl(target, ctx):
             include_directories = target[CcInfo].compilation_context.includes,
             quote_include_directories = target[CcInfo].compilation_context.quote_includes,
             system_include_directories = depset(
+                # Include built-in include directories in case of cross-compilation.
+                cc_toolchain.built_in_include_directories,
                 transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
             ),
             framework_include_directories = target[CcInfo].compilation_context.framework_includes,
