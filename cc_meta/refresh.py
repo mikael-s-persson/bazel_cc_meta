@@ -142,7 +142,6 @@ def _gather_cc_meta(target_list: list, top_dir: str):
 
     if target_build_process.returncode != 0:
         print("Failed to build all targets. Results will be partial.", file=sys.stderr)
-        print(target_build_process.stderr.decode(), file=sys.stderr)
 
     compile_commands_by_file = {}
     combined_all_imports_list = []

@@ -319,7 +319,7 @@ target topologies. The weirder the setup, like using lots of "wrapper" targets, 
 the less likely it is to work.
 
 The primary platform targeted (where it is actually used) is Linux with reasonably recent Bazel and Python
-versions (guessing, at least Python > 3.6, and Bazel > 7.0).
+versions (guessing, at least Python > 3.8, and Bazel > 7.0).
 
 # Contributing
 

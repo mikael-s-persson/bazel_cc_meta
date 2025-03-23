@@ -341,10 +341,10 @@ def _cc_meta_aspect_impl(target, ctx):
                 user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-M", "-MF", all_incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
                 source_file = f.path,
                 include_directories = target[CcInfo].compilation_context.includes,
-                quote_include_directories = depset(
-                    transitive = [target[CcInfo].compilation_context.quote_includes, target[CcInfo].compilation_context.external_includes],
+                quote_include_directories = target[CcInfo].compilation_context.quote_includes,
+                system_include_directories = depset(
+                    transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
                 ),
-                system_include_directories = target[CcInfo].compilation_context.system_includes,
                 framework_include_directories = target[CcInfo].compilation_context.framework_includes,
                 preprocessor_defines = depset(
                     transitive = [
@@ -382,10 +382,10 @@ def _cc_meta_aspect_impl(target, ctx):
             user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + _CC_META_FORCE_CPP_ARGS,
             source_file = f.path,
             include_directories = target[CcInfo].compilation_context.includes,
-            quote_include_directories = depset(
-                transitive = [target[CcInfo].compilation_context.quote_includes, target[CcInfo].compilation_context.external_includes],
+            quote_include_directories = target[CcInfo].compilation_context.quote_includes,
+            system_include_directories = depset(
+                transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
             ),
-            system_include_directories = target[CcInfo].compilation_context.system_includes,
             framework_include_directories = target[CcInfo].compilation_context.framework_includes,
             preprocessor_defines = depset(
                 transitive = [target[CcInfo].compilation_context.defines, target[CcInfo].compilation_context.local_defines],
