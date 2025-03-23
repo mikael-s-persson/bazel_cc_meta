@@ -5,8 +5,7 @@ import sys
 
 def read_json_file(file_name):
     with open(file_name, "r") as file:
-        content_str = file.read()
-    return json.loads(content_str)
+        return json.load(file)
 
 
 if __name__ == "__main__":
@@ -42,10 +41,29 @@ if __name__ == "__main__":
     targets_imports = read_json_file(args.file_list[-2])
     if not isinstance(targets_imports, list):
         targets_imports = [targets_imports]
-    targets_deps_issues = []
+    # Fuse by target
+    targets_imports_by_target = {}
     for target_imports in targets_imports:
-        target_imports_list = [(imp, "") for imp in target_imports["imports"]]
-        target_imports_list.sort()
+        if target_imports["target"] not in targets_imports_by_target:
+            targets_imports_by_target.update(
+                {
+                    target_imports["target"]: set(
+                        [(imp, "") for imp in target_imports["imports"]]
+                    )
+                }
+            )
+        else:
+            targets_imports_by_target.update(
+                {
+                    target_imports["target"]: targets_imports_by_target[
+                        target_imports["target"]
+                    ]
+                    | set([(imp, "") for imp in target_imports["imports"]])
+                }
+            )
+    targets_deps_issues = []
+    for target_imports_set in targets_imports_by_target.values():
+        target_imports_list = sorted(target_imports_set)
 
         deps_usage = {}
         for dep_exports in deps_exports:
@@ -94,4 +112,4 @@ if __name__ == "__main__":
         )
 
     with open(out_file_name, "w") as out_file:
-        out_file.write(json.dumps(targets_deps_issues, sort_keys=True, indent=2))
+        json.dump(targets_deps_issues, out_file, sort_keys=True, indent=2)

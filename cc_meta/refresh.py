@@ -65,11 +65,51 @@ def _load_json_or_empty_list(filename):
     result = []
     if filename:
         with open(filename, "r") as f:
-            result = json.loads(f.read())
+            result = json.load(f)
     return result
 
 
-def _gather_cc_meta(target_list: list):
+# Just a heuristic matching for preferring compile commands that compile a source file (not header).
+_SOURCE_EXTENSIONS = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".c++",
+    ".C",
+    ".CC",
+    ".cp",
+    ".CPP",
+    ".C++",
+    ".CXX",
+    ".m",
+    ".mm",
+    ".M",
+    ".cu",
+    ".cui",
+    ".cl",
+    ".clcpp",
+    ".s",
+    ".asm",
+    ".S",
+}
+
+
+def _should_update_comp_cmd(prior_cmd: dict, new_cmd: dict):
+    prior_is_src = os.path.splitext(prior_cmd["compile_file"]) in _SOURCE_EXTENSIONS
+    new_is_src = os.path.splitext(new_cmd["compile_file"]) in _SOURCE_EXTENSIONS
+
+    # Prefer a command that compiles a source file, instead of parsing a header.
+    if new_is_src and not prior_is_src:
+        return True
+    if prior_is_src and not new_is_src:
+        return False
+
+    # Prefer a longer arguments list, more 'specialized'.
+    return len(new_cmd["arguments"]) > len(prior_cmd["arguments"])
+
+
+def _gather_cc_meta(target_list: list, top_dir: str):
     print(">>> Analyzing cc-meta-info...")
 
     common_flags = [
@@ -102,8 +142,10 @@ def _gather_cc_meta(target_list: list):
 
     if target_build_process.returncode != 0:
         print("Failed to build all targets. Results will be partial.", file=sys.stderr)
+        print(target_build_process.stderr.decode(), file=sys.stderr)
 
-    combined_compile_commands = []
+    compile_commands_by_file = {}
+    combined_all_imports_list = []
     combined_exports_dict = {}  # Target name to exports
     combined_deps_issues_dict = {}  # Target name to deps issues
 
@@ -111,15 +153,29 @@ def _gather_cc_meta(target_list: list):
         out_ln_str = out_ln.decode()
         if out_ln_str.startswith("WARNING") or out_ln_str.startswith("ERROR"):
             print(out_ln_str, file=sys.stderr)
-        elif out_ln_str.endswith("_compile_commands.json"):
+        elif out_ln_str.endswith("_cc_meta_compile_commands.json"):
             target_compile_commands = _load_json_or_empty_list(out_ln_str.lstrip())
-            combined_compile_commands.extend(target_compile_commands)
-        elif out_ln_str.endswith("_exports.json"):
+            for tcmd in target_compile_commands:
+                tcmd_file = tcmd["file"]
+                compile_commands_by_file.update(
+                    {
+                        tcmd_file: {
+                            "arguments": tcmd["arguments"],
+                            "file": tcmd_file,
+                            "compile_file": tcmd_file,
+                            "directory": top_dir,
+                        }
+                    }
+                )
+        elif out_ln_str.endswith("_cc_meta_all_imports.json"):
+            all_imports_list = _load_json_or_empty_list(out_ln_str.lstrip())
+            combined_all_imports_list.extend(all_imports_list)
+        elif out_ln_str.endswith("_cc_meta_exports.json"):
             target_exports_list = _load_json_or_empty_list(out_ln_str.lstrip())
             combined_exports_dict.update(
                 {te["target"]: te for te in target_exports_list}
             )
-        elif out_ln_str.endswith("_deps_issues.json"):
+        elif out_ln_str.endswith("_cc_meta_deps_issues.json"):
             target_deps_issues_list = _load_json_or_empty_list(out_ln_str.lstrip())
             combined_deps_issues_dict.update(
                 {
@@ -128,6 +184,32 @@ def _gather_cc_meta(target_list: list):
                     if di["not_found"] or di["unused"]
                 }
             )
+
+    for al in combined_all_imports_list:
+        comp_src_file = al["source_file"]
+        if comp_src_file not in compile_commands_by_file:
+            print(
+                "WARNING: Missing compile commands for {}!".format(comp_src_file),
+                file=sys.stderr,
+            )
+            continue
+        comp_cmd = compile_commands_by_file[comp_src_file]
+        for imp_file in al["imports"]:
+            new_cmd = {
+                "arguments": comp_cmd["arguments"],
+                "file": imp_file,
+                "compile_file": comp_cmd["compile_file"],
+                "directory": top_dir,
+            }
+            if (imp_file not in compile_commands_by_file) or _should_update_comp_cmd(
+                compile_commands_by_file[imp_file], new_cmd
+            ):
+                compile_commands_by_file.update({imp_file: new_cmd})
+
+    combined_compile_commands = []
+    for cmd in compile_commands_by_file.values():
+        del cmd["compile_file"]
+        combined_compile_commands.append(cmd)
 
     print("\r>>> Finished extracting cc-meta-info")
 
@@ -162,7 +244,9 @@ if __name__ == "__main__":
         # End:   template filled by Bazel
     ]
 
-    comp_cmds, exports, deps_issues = _gather_cc_meta(_get_target_list(target_patterns))
+    comp_cmds, exports, deps_issues = _gather_cc_meta(
+        _get_target_list(target_patterns), str(workspace_root)
+    )
 
     if not comp_cmds:
         print(
@@ -170,9 +254,6 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
         sys.exit(1)
-
-    for i in range(len(comp_cmds)):
-        comp_cmds[i].update({"directory": str(workspace_root)})
 
     # Chain output into compile_commands.json
     with open("compile_commands.json", "w") as output_file:

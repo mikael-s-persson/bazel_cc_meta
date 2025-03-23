@@ -7,9 +7,11 @@ def make_includes_list(file_name):
     with open(file_name, "r") as file:
         md_includes_list_str = file.read()
     md_includes_list = md_includes_list_str.replace("\\\n", "").strip().split()
+    if len(md_includes_list) < 2:
+        return "", []
     if len(md_includes_list) < 3:
-        return []
-    return md_includes_list[2:]
+        return md_includes_list[1], []
+    return md_includes_list[1], md_includes_list[2:]
 
 
 if __name__ == "__main__":
@@ -27,17 +29,19 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    out_file_name = args.file_list[-2]
+    target_name = args.file_list[-1]
     combined_inc_list = []
     for in_file_name in args.file_list[:-2]:
-        combined_inc_list.extend(make_includes_list(in_file_name))
-    combined_inc_set = sorted(set(combined_inc_list))
-
-    with open(out_file_name, "w") as out_file:
-        out_file.write(
-            json.dumps(
-                [{"target": args.file_list[-1], "imports": combined_inc_set}],
-                sort_keys=True,
-                indent=2,
+        src_file, imp_list = make_includes_list(in_file_name)
+        if src_file:
+            combined_inc_list.append(
+                {"source_file": src_file, "target": target_name, "imports": imp_list}
             )
+
+    out_file_name = args.file_list[-2]
+    with open(out_file_name, "w") as out_file:
+        json.dump(
+            combined_inc_list,
+            out_file,
+            indent=2,
         )

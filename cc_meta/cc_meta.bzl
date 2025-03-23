@@ -109,9 +109,13 @@ def _match_lists(a_list, b_list):
             return True
     return False
 
+# List of single arguments (e.g., '-foo', not '-foo foo_value') to take out of compile_commands arguments.
+_FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS = ["-fno-canonical-system-headers"]
+
 def _cc_meta_aspect_impl(target, ctx):
     # Declare all the outputs up-top.
     comb_incl_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_imports.json")
+    comb_all_incl_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_all_imports.json")
     comb_cmd_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_compile_commands.json")
     deps_issues_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_deps_issues.json")
     pub_hdrs_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_exports.json")
@@ -204,6 +208,10 @@ def _cc_meta_aspect_impl(target, ctx):
             content = json.encode_indent([], indent = "  "),
         )
         ctx.actions.write(
+            output = comb_all_incl_file,
+            content = json.encode_indent([], indent = "  "),
+        )
+        ctx.actions.write(
             output = comb_cmd_file,
             content = json.encode_indent([], indent = "  "),
         )
@@ -217,7 +225,7 @@ def _cc_meta_aspect_impl(target, ctx):
             }], indent = "  "),
         )
         return [
-            OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
+            OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_all_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
             CcMetaInfo(
                 direct_imports_json = comb_incl_file,
                 compile_commands_json = comb_cmd_file,
@@ -267,17 +275,19 @@ def _cc_meta_aspect_impl(target, ctx):
     _CC_META_FORCE_CPP_ARGS = ["-x", "c++"]
 
     incl_files = []
+    all_incl_files = []
     comp_cmd_list = []
     for f in buildable_files:
         if not _is_external(ctx):
-            # Create a temporary file as 'source.cc.include_for_target_name' because the same
+            # Generate a shallow list of includes, without system includes, which will later be
+            # checked against the exports of direct dependencies.
+
+            # Create a temporary file as 'source.cc.cc_meta_include_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            incl_file = ctx.actions.declare_file(f.basename + ".includes_for_" + target.label.name)
+            incl_file = ctx.actions.declare_file(f.basename + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 
             # Invoke the preprocessor (why does Bazel make this so convoluted?)
-            # We compile everything as C++, it shouldn't really matter because this is preprocessor-only.
-            # TODO: Figure out what is the Bazel way to distinguish C vs C++ targets (excluding brittle hacks).
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
@@ -316,6 +326,55 @@ def _cc_meta_aspect_impl(target, ctx):
                 outputs = [incl_file],
             )
 
+            # Generate a deep list of includes, with system includes, so that we can produce some
+            # compile command for the entire universe of files that clangd/clang-tidy might discover.
+
+            # Create a temporary file as 'source.cc.cc_meta_all_includes_for_target_name' because the same
+            # source could appear in multiple targets (naughty!).
+            all_incl_file = ctx.actions.declare_file(f.basename + ".cc_meta_all_includes_for_" + target.label.name)
+            all_incl_files.append(all_incl_file)
+
+            # Invoke the preprocessor (why does Bazel make this so convoluted?)
+            cc_all_incl_compile_variables = cc_common.create_compile_variables(
+                feature_configuration = feature_configuration,
+                cc_toolchain = cc_toolchain,
+                user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-M", "-MF", all_incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
+                source_file = f.path,
+                include_directories = target[CcInfo].compilation_context.includes,
+                quote_include_directories = depset(
+                    transitive = [target[CcInfo].compilation_context.quote_includes, target[CcInfo].compilation_context.external_includes],
+                ),
+                system_include_directories = target[CcInfo].compilation_context.system_includes,
+                framework_include_directories = target[CcInfo].compilation_context.framework_includes,
+                preprocessor_defines = depset(
+                    transitive = [
+                        target[CcInfo].compilation_context.defines,
+                        target[CcInfo].compilation_context.local_defines,
+                    ],
+                ),
+            )
+            cc_all_incl_command_line = cc_common.get_memory_inefficient_command_line(
+                feature_configuration = feature_configuration,
+                action_name = CPP_COMPILE_ACTION_NAME,
+                variables = cc_all_incl_compile_variables,
+            )
+            cc_all_incl_env = cc_common.get_environment_variables(
+                feature_configuration = feature_configuration,
+                action_name = CPP_COMPILE_ACTION_NAME,
+                variables = cc_all_incl_compile_variables,
+            )
+            ctx.actions.run(
+                mnemonic = "CcGetAllIncludes",
+                executable = ctx.executable._run_suppress_stdout,
+                arguments = [cc_compiler_path] + cc_all_incl_command_line,
+                env = cc_all_incl_env,
+                inputs = depset(
+                    [f] + target[CcInfo].compilation_context.headers.to_list(),
+                    transitive = [cc_toolchain.all_files],
+                ),
+                outputs = [all_incl_file],
+            )
+
         # Make the actual compiler command
         cc_cmd_compile_variables = cc_common.create_compile_variables(
             feature_configuration = feature_configuration,
@@ -338,7 +397,7 @@ def _cc_meta_aspect_impl(target, ctx):
             variables = cc_cmd_compile_variables,
         )
         comp_cmd_list.append({
-            "arguments": cc_cmd_command_line,
+            "arguments": [cc_compiler_path] + [arg for arg in cc_cmd_command_line if arg not in _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS],
             "directory": "",  # We'll have to get the workspace root later (see refresh.py script).
             "file": f.path,
         })
@@ -349,6 +408,13 @@ def _cc_meta_aspect_impl(target, ctx):
         arguments = [f.path for f in incl_files] + [comb_incl_file.path] + [target_qualified_name],
         inputs = depset(incl_files),
         outputs = [comb_incl_file],
+    )
+
+    ctx.actions.run(
+        executable = ctx.executable._combine_includes_lists,
+        arguments = [f.path for f in all_incl_files] + [comb_all_incl_file.path] + [target_qualified_name],
+        inputs = depset(all_incl_files),
+        outputs = [comb_all_incl_file],
     )
 
     # Output combined compiler commands list to json output file.
@@ -401,7 +467,7 @@ def _cc_meta_aspect_impl(target, ctx):
         )
 
     return [
-        OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
+        OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_all_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
         CcMetaInfo(
             direct_imports_json = comb_incl_file,
             compile_commands_json = comb_cmd_file,
