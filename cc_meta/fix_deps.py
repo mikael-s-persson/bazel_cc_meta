@@ -130,7 +130,7 @@ if __name__ == "__main__":
                 _resolve_target_name(nt) for nt in targets_by_export[nf]
             ]
             new_target = None
-            if not args.noninteractive:
+            if args.noninteractive:
                 print("Multiple targets for include '{}'. Skipping.".format(nf))
             else:
                 print("Multiple targets for include '{}'. Options are:".format(nf))
