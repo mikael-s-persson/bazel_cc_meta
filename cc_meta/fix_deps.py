@@ -9,6 +9,19 @@ import pathlib
 import subprocess
 import sys
 
+
+def _resolve_targets_for_source(source_path: str):
+    target_resolve_process = subprocess.run(
+        ["bazel", "query", "same_pkg_direct_rdeps({})".format(source_path)],
+        capture_output=True,
+    )
+    if target_resolve_process.returncode != 0:
+        return []
+    return [
+        t_ln.decode().strip() for t_ln in target_resolve_process.stdout.splitlines()
+    ]
+
+
 _resolved_targets = {}
 
 
@@ -52,9 +65,18 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--buildozer", default="buildozer")
     parser.add_argument("-i", "--issues", default="dependency_issues.json")
     parser.add_argument("-e", "--exports", default="target_exports.json")
+    parser.add_argument("-t", "--target", default="")
+    parser.add_argument("file_list", nargs="*")
     args = parser.parse_args()
 
     _ensure_cwd_is_workspace_root()
+
+    targets_to_fix = set()
+    if args.target:
+        targets_to_fix.update([_resolve_target_name(args.target)])
+    if args.file_list:
+        for fpath in args.file_list:
+            targets_to_fix.update(_resolve_targets_for_source(fpath))
 
     deps_issues = {}
     with open(args.issues, "r") as f:
@@ -74,6 +96,8 @@ if __name__ == "__main__":
 
     for t, di in deps_issues.items():
         resolved_target = _resolve_target_name(t)
+        if targets_to_fix and resolved_target not in targets_to_fix:
+            continue
         print("===== Fixing target '{}'".format(resolved_target))
         buildozer_rm = []
         for ut in di["unused"]:

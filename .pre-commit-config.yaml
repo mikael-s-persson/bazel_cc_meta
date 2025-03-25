@@ -48,3 +48,11 @@ repos:
     hooks:
       - id: shfmt
         args: ["-w", "-s", "-i", "4"] # indent with 4 spaces
+  - repo: local
+    hooks:
+      - id: fix-deps
+        name: fix-deps
+        description: 'Fix C++ target dependencies'
+        language: script
+        types_or: [c++, c, cuda]
+        entry: ./examples/precommit_fix.sh
