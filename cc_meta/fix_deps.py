@@ -66,6 +66,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--issues", default="dependency_issues.json")
     parser.add_argument("-e", "--exports", default="target_exports.json")
     parser.add_argument("-t", "--target", default="")
+    parser.add_argument("-n", "--noninteractive", action="store_true")
     parser.add_argument("file_list", nargs="*")
     args = parser.parse_args()
 
@@ -117,9 +118,10 @@ if __name__ == "__main__":
         for nf in di["not_found"]:
             if (nf not in targets_by_export) or (not targets_by_export[nf]):
                 print("Could not find target for include '{}'!".format(nf))
-                new_target = input("Please enter target name (or enter to skip): ")
-                if new_target:
-                    buildozer_add.append(new_target)
+                if not args.noninteractive:
+                    new_target = input("Please enter target name (or enter to skip): ")
+                    if new_target:
+                        buildozer_add.append(new_target)
                 continue
             if len(targets_by_export[nf]) == 1:
                 buildozer_add.append(_resolve_target_name(targets_by_export[nf][0]))
@@ -127,12 +129,16 @@ if __name__ == "__main__":
             resolved_targets = [
                 _resolve_target_name(nt) for nt in targets_by_export[nf]
             ]
-            print("Multiple targets for include '{}'. Options are:".format(nf))
-            for i in range(len(resolved_targets)):
-                print("{}: {}".format(i, resolved_targets[i]))
-            new_target = input(
-                "Please enter option number or target name (or enter to skip): "
-            )
+            new_target = None
+            if not args.noninteractive:
+                print("Multiple targets for include '{}'. Skipping.".format(nf))
+            else:
+                print("Multiple targets for include '{}'. Options are:".format(nf))
+                for i in range(len(resolved_targets)):
+                    print("{}: {}".format(i, resolved_targets[i]))
+                new_target = input(
+                    "Please enter option number or target name (or enter to skip): "
+                )
             if not new_target:
                 continue
             try:

@@ -30,6 +30,7 @@ cc_binary(
         "middle_printer.cc",
     ],
     deps = [
+        ":lowest",
         ":middle",
     ],
 )

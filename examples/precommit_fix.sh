@@ -7,4 +7,4 @@
 # First refresh the databases.
 bazel run //examples/default_good:refresh
 # Then, run the fix_deps script with files provided by pre-commit hook.
-bazel run @bazel_cc_meta//cc_meta:fix_deps -- "$@"
+bazel run @bazel_cc_meta//cc_meta:fix_deps -- -n "$@"
