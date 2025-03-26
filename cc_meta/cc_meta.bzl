@@ -1,7 +1,7 @@
 """Some aspects for the cc_meta extraction"""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@rules_cc//cc:action_names.bzl", "CPP_COMPILE_ACTION_NAME")
+load("@rules_cc//cc:action_names.bzl", "ASSEMBLE_ACTION_NAME", "CPP_COMPILE_ACTION_NAME", "C_COMPILE_ACTION_NAME", "OBJCPP_COMPILE_ACTION_NAME", "OBJC_COMPILE_ACTION_NAME", "PREPROCESS_ASSEMBLE_ACTION_NAME")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cpp_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_python//python:defs.bzl", "py_binary")
@@ -111,6 +111,62 @@ def _match_lists(a_list, b_list):
 
 # List of single arguments (e.g., '-foo', not '-foo foo_value') to take out of compile_commands arguments.
 _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS = ["-fno-canonical-system-headers"]
+
+# See Bazel's cc_helper.bzl source which lists file extensions used to infer the language used.
+# The main differences compared to inferred language by GCC or Clang are:
+#  - Bazel treats all headers (.h) as C++ headers (C headers must be C++-compatible)
+#  - Bazel doesn't accept sources or headers that are not pre-processed (e.g., .i, .ii).
+_CC_SOURCE = ["cc", "cpp", "cxx", "c++", "C", "cu", "cl", "cppmap"]
+_C_SOURCE = ["c"]
+_OBJC_SOURCE = ["m"]
+_OBJCPP_SOURCE = ["mm", "M"]
+_CC_HEADER = ["h", "hh", "hpp", "ipp", "hxx", "h++", "inc", "inl", "tlh", "tli", "H", "tcc"]
+_ASSEMBLER_WITH_C_PREPROCESSOR = [".S"]
+_ASSEMBLER = [".s", ".asm"]
+
+def _lang_spec_to_action(opt):
+    result = None
+    if opt.startwith("c++") or opt.startwith("gnu++"):
+        result = CPP_COMPILE_ACTION_NAME
+    elif opt.startwith("c") or opt.startwith("gnu") or opt.startwith("iso"):
+        result = C_COMPILE_ACTION_NAME
+    elif opt.startwith("objective-c++"):
+        result = OBJCPP_COMPILE_ACTION_NAME
+    elif opt.startwith("objective-c"):
+        result = OBJC_COMPILE_ACTION_NAME
+    elif opt.startwith("assembler-with-cpp"):
+        result = PREPROCESS_ASSEMBLE_ACTION_NAME
+    elif opt.startwith("assembler"):
+        result = ASSEMBLE_ACTION_NAME
+    return result
+
+def _remove_lang_spec_prefix(opt):
+    for p in ["--std=", "-std=", "-x"]:
+        if opt.startwith(p):
+            return opt.removeprefix(p)
+    return None
+
+def _get_action_from_lang_spec(opts):
+    expect_lang_spec = False
+    result = None
+    for opt in opts:
+        if expect_lang_spec:
+            opt_as_action = _lang_spec_to_action(opt)
+            if opt_as_action:
+                result = opt_as_action
+            expect_lang_spec = False
+        if opt in ["--std", "-x"]:
+            # Check next opt as language specification.
+            expect_lang_spec = True
+            continue
+
+        # Maybe opt is a fused language specification (e.g., "-xc++", "-std=gnu99")
+        lang_spec = _remove_lang_spec_prefix(opt)
+        if lang_spec:
+            opt_as_action = _lang_spec_to_action(lang_spec)
+            if opt_as_action:
+                result = opt_as_action
+    return result
 
 def _cc_meta_aspect_impl(target, ctx):
     # Declare all the outputs up-top.
@@ -242,6 +298,19 @@ def _cc_meta_aspect_impl(target, ctx):
         for src in ctx.rule.attr.srcs:
             buildable_files.extend(src.files.to_list())
 
+    # Check if it looks like we have an objective-c[++] library.
+    is_target_objc = False
+    for f in buildable_files:
+        # Any C/C++ source means it's not objective-c[++],
+        # any objective-c[++] means that it is, and
+        # any other file (header, assembly) could be for either kinds.
+        if f.extension in _OBJC_SOURCE or f.extension in _OBJCPP_SOURCE:
+            is_target_objc = True
+            break
+        if f.extension in _C_SOURCE or f.extension in _CC_SOURCE:
+            is_target_objc = False
+            break
+
     if hasattr(ctx.rule.attr, "hdrs"):
         for src in ctx.rule.attr.hdrs:
             buildable_files.extend(src.files.to_list())
@@ -259,25 +328,66 @@ def _cc_meta_aspect_impl(target, ctx):
             unsupported_features = ["module_maps"] + ctx.disabled_features,
         )
 
-        cc_compiler_path = cc_common.get_tool_for_action(
-            feature_configuration = feature_configuration,
-            action_name = CPP_COMPILE_ACTION_NAME,
-        )
-
     # Assemble direct include lists and compile commands for each compilable file.
-
-    # We compile everything as C++.
-    # For preprocessor, that makes no behavioral difference, except it could choke on C++-only options.
-    # For the compile commands, this could be a problem for pure C targets (nowadays, C code that can't be
-    # syntactically analysed as C++ is pretty rare).
-    # We have to force C++, otherwise compilers deduce the language from file extensions, which is very inaccurate.
-    # TODO: Figure out what the Bazel way is to distinguish C vs C++ targets (excluding brittle hacks).
-    _CC_META_FORCE_CPP_ARGS = ["-x", "c++"]
 
     incl_files = []
     all_incl_files = []
     comp_cmd_list = []
     for f in buildable_files:
+        # The following bit emulates Bazel's logic to recognize the language of "cc" sources and headers.
+        # Worked out from cc_helper.bzl and CcCompilationHelper.java sources of Bazel.
+        # In short, Bazel approximately follow GCC's file-extension
+        # rules (see https://gcc.gnu.org/onlinedocs/gcc/Overall-Options.html), but restricts to pre-processed
+        # C/C++/Objective-C/Objective-C++ sources, and assembly files.
+        # Bazel treats headers as being C++ or Objective-C++, even for ".h" headers, which is generally fine
+        # because all C headers are C++-compatible in this day and age.
+        # Finally, Bazel figures this out on a per-file basis, not for the whole target, except for objective-c[++]
+        # headers that are ambiguous with c[++] headers.
+        # This feels brittle, but that's how compilers do it.
+        # It would be too easy if Bazel would have functions in cc_common that do this.
+
+        # Figure out what compilation options we need.
+        user_flags = ctx.fragments.cpp.copts
+        if f.extension in _C_SOURCE:
+            user_flags += ctx.fragments.cpp.conlyopts
+        if (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
+            user_flags += ctx.fragments.cpp.cxxopts
+        if is_target_objc:
+            user_flags += ctx.fragments.cpp.objccopts
+
+        # Specify language explicitly if we have a header without any specific user option.
+        action_name = _get_action_from_lang_spec(user_flags)
+
+        # Overwrite action if we have a header, Bazel plus-pluses headers.
+        if f.extension in _CC_HEADER:
+            if is_target_objc:
+                action_name = OBJCPP_COMPILE_ACTION_NAME
+                user_flags += ["-x", "objective-c++-header"]
+            else:
+                action_name = CPP_COMPILE_ACTION_NAME
+                user_flags += ["-x", "c++-header"]
+        if not action_name:
+            if f.extension in _C_SOURCE:
+                action_name = C_COMPILE_ACTION_NAME
+            elif f.extension in _CC_SOURCE:
+                action_name = CPP_COMPILE_ACTION_NAME
+            elif f.extension in _OBJC_SOURCE:
+                action_name = OBJC_COMPILE_ACTION_NAME
+            elif f.extension in _OBJCPP_SOURCE:
+                action_name = OBJCPP_COMPILE_ACTION_NAME
+            elif f.extension in _ASSEMBLER_WITH_C_PREPROCESSOR:
+                action_name = PREPROCESS_ASSEMBLE_ACTION_NAME
+            elif f.extension in _ASSEMBLER:
+                action_name = ASSEMBLE_ACTION_NAME
+            else:
+                action_name = CPP_COMPILE_ACTION_NAME
+
+        # Find the compiler we need for this type of source.
+        cc_compiler_path = cc_common.get_tool_for_action(
+            feature_configuration = feature_configuration,
+            action_name = action_name,
+        )
+
         if not _is_external(ctx):
             # Generate a shallow list of includes, without system includes, which will later be
             # checked against the exports of direct dependencies.
@@ -291,7 +401,7 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-MM", "-MF", incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
+                user_compile_flags = user_flags + ["-MM", "-MF", incl_file.path, "-E", "-MG"],
                 source_file = f.path,
                 # A successful compilation would require all include paths, but:
                 #  '-E' means we only preprocess.
@@ -306,12 +416,12 @@ def _cc_meta_aspect_impl(target, ctx):
             )
             cc_incl_command_line = cc_common.get_memory_inefficient_command_line(
                 feature_configuration = feature_configuration,
-                action_name = CPP_COMPILE_ACTION_NAME,
+                action_name = action_name,
                 variables = cc_incl_compile_variables,
             )
             cc_incl_env = cc_common.get_environment_variables(
                 feature_configuration = feature_configuration,
-                action_name = CPP_COMPILE_ACTION_NAME,
+                action_name = action_name,
                 variables = cc_incl_compile_variables,
             )
             ctx.actions.run(
@@ -338,7 +448,7 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_all_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + ["-M", "-MF", all_incl_file.path, "-E", "-MG"] + _CC_META_FORCE_CPP_ARGS,
+                user_compile_flags = user_flags + ["-M", "-MF", all_incl_file.path, "-E", "-MG"],
                 source_file = f.path,
                 include_directories = target[CcInfo].compilation_context.includes,
                 quote_include_directories = target[CcInfo].compilation_context.quote_includes,
@@ -355,12 +465,12 @@ def _cc_meta_aspect_impl(target, ctx):
             )
             cc_all_incl_command_line = cc_common.get_memory_inefficient_command_line(
                 feature_configuration = feature_configuration,
-                action_name = CPP_COMPILE_ACTION_NAME,
+                action_name = action_name,
                 variables = cc_all_incl_compile_variables,
             )
             cc_all_incl_env = cc_common.get_environment_variables(
                 feature_configuration = feature_configuration,
-                action_name = CPP_COMPILE_ACTION_NAME,
+                action_name = action_name,
                 variables = cc_all_incl_compile_variables,
             )
             ctx.actions.run(
@@ -379,7 +489,7 @@ def _cc_meta_aspect_impl(target, ctx):
         cc_cmd_compile_variables = cc_common.create_compile_variables(
             feature_configuration = feature_configuration,
             cc_toolchain = cc_toolchain,
-            user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.cxxopts + _CC_META_FORCE_CPP_ARGS,
+            user_compile_flags = user_flags,
             source_file = f.path,
             include_directories = target[CcInfo].compilation_context.includes,
             quote_include_directories = target[CcInfo].compilation_context.quote_includes,
@@ -395,7 +505,7 @@ def _cc_meta_aspect_impl(target, ctx):
         )
         cc_cmd_command_line = cc_common.get_memory_inefficient_command_line(
             feature_configuration = feature_configuration,
-            action_name = CPP_COMPILE_ACTION_NAME,
+            action_name = action_name,
             variables = cc_cmd_compile_variables,
         )
         comp_cmd_list.append({
