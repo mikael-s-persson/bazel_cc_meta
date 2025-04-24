@@ -40,7 +40,7 @@ Put the following into your WORKSPACE file to use a specific commit
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
-    name = "depend_on_what_you_use",
+    name = "bazel_cc_meta",
     commit = <commit_you_are_interested_in>,
     remote = "https://github.com/mikael-s-persson/bazel_cc_meta",
 )
@@ -208,6 +208,64 @@ A deviation set is dictionary that can contain a few elements (all optional):
    that specific set of exports (only). Similarly, in conjunction with "forward_exports",
    the target would have only its direct dependencies' exports. Adding "cc_meta_skip" to
    a target's 'tags' attribute has the same effect (preferred, if possible).
+
+## Selecting deviations
+
+Deviations can be "selected" (in the Bazel `select` sense) through the aspect
+specified in the "refresh" rule. This is, unfortunately, a bit verbose.
+Here is a basic example of a selectable set of deviations.
+
+In a BUILD file (e.g., //my:BUILD):
+
+```python
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "make_cc_meta_deviations", "refresh_cc_meta")
+
+make_cc_meta_deviations(
+    name = "my_cc_meta_deviations",
+    deviations = {
+        # ... General deviations.
+    },
+    visibility = ["//visibility:public"],
+)
+
+make_cc_meta_deviations(
+    name = "my_cc_meta_deviations_linux_only",
+    deviations = {
+        # ... Linux-only additional deviations.
+    },
+    # Restrict the deviations to Linux if the labels in the dictionary only exist in Linux.
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+refresh_cc_meta(
+    name = "refresh_foo_cc_meta",
+    # Select the aspect based on the platform.
+    cc_meta_aspect = select({
+        "@platforms//os:linux": "//my:defs.bzl%my_cc_meta_aspect_for_linux",
+        "//conditions:default": "//my:defs.bzl%my_cc_meta_aspect",
+    }),
+    visibility = ["//visibility:public"],
+)
+```
+
+In a bzl file (e.g., //my:defs.bzl):
+
+```python
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "cc_meta_aspect_factory")
+
+my_cc_meta_aspect = cc_meta_aspect_factory(
+    deviations = [Label("@//my:my_cc_meta_deviations")],
+)
+
+# Create an aspect for Linux that include both general and Linux-only deviations.
+my_cc_meta_aspect_for_linux = cc_meta_aspect_factory(
+    deviations = [Label("@//my:my_cc_meta_deviations"), Label("@//my:my_cc_meta_deviations_linux_only")],
+)
+```
 
 # Known issues
 
