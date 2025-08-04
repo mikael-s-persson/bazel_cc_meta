@@ -126,23 +126,23 @@ _ASSEMBLER = [".s", ".asm"]
 
 def _lang_spec_to_action(opt):
     result = None
-    if opt.startwith("c++") or opt.startwith("gnu++"):
+    if opt.startswith("c++") or opt.startswith("gnu++"):
         result = CPP_COMPILE_ACTION_NAME
-    elif opt.startwith("c") or opt.startwith("gnu") or opt.startwith("iso"):
+    elif opt.startswith("c") or opt.startswith("gnu") or opt.startswith("iso"):
         result = C_COMPILE_ACTION_NAME
-    elif opt.startwith("objective-c++"):
+    elif opt.startswith("objective-c++"):
         result = OBJCPP_COMPILE_ACTION_NAME
-    elif opt.startwith("objective-c"):
+    elif opt.startswith("objective-c"):
         result = OBJC_COMPILE_ACTION_NAME
-    elif opt.startwith("assembler-with-cpp"):
+    elif opt.startswith("assembler-with-cpp"):
         result = PREPROCESS_ASSEMBLE_ACTION_NAME
-    elif opt.startwith("assembler"):
+    elif opt.startswith("assembler"):
         result = ASSEMBLE_ACTION_NAME
     return result
 
 def _remove_lang_spec_prefix(opt):
     for p in ["--std=", "-std=", "-x"]:
-        if opt.startwith(p):
+        if opt.startswith(p):
             return opt.removeprefix(p)
     return None
 
