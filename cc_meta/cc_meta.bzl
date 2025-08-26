@@ -248,7 +248,7 @@ def _cc_meta_aspect_impl(target, ctx):
         if hasattr(ctx.rule.attr, "strip_include_prefix") and not direct_hdr_path_is_virtual:
             hacky_suffixes.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
         for ext_incl in target[CcInfo].compilation_context.external_includes.to_list() + target[CcInfo].compilation_context.quote_includes.to_list():
-            if not paths.starts_with(direct_hdr.path, ext_incl):
+            if paths.normalize(ext_incl) != "." and not paths.starts_with(direct_hdr.path, ext_incl):
                 continue
             potential_stems = []
             for hacky_suffix in hacky_suffixes:
@@ -258,7 +258,7 @@ def _cc_meta_aspect_impl(target, ctx):
             else:
                 potential_stems.append(ext_incl)
             for potential_stem in potential_stems:
-                if paths.starts_with(direct_hdr.path, potential_stem):
+                if paths.normalize(potential_stem) == "." or paths.starts_with(direct_hdr.path, potential_stem):
                     potential_header_path = paths.relativize(direct_hdr.path, potential_stem)
                     public_header_paths.append(potential_header_path)
 
