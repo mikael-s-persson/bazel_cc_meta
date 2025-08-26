@@ -332,9 +332,12 @@ actually come from or where it's appropriate to change the dependencies.
 ## Canonical public targets
 
 Again, when packages declare aliases and wrapper targets, it causes problems. In particular, when trying
-to add missing dependencies such targets can sometimes resolve to some underlying private target that is
-not meant to be depended upon. It's hard (impossible?) to resolve such targets to the intended public alias.
-In these cases, there will be errors trying to add those dependencies and might require manual fixing.
+to add missing dependencies such targets will generally resolve to some underlying private target that is
+not meant or allowed to be depended upon. It's not possible to reassign such targets back to the intended
+public alias. In these cases, there will be errors trying to add those dependencies and might require
+manual fixing.
+
+Adding a deviation on the alias target can help, especially "alwaysused" and "forward_exports".
 
 ## Preprocessor logic
 

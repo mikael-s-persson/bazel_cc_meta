@@ -25,7 +25,12 @@ CcMetaDeviationsInfo = provider(
 )
 
 def _make_cc_meta_deviations_impl(ctx):
-    return CcMetaDeviationsInfo(deviations = ctx.attr.deviations)
+    dealiased_deviations = {}
+    for key, values in ctx.attr.deviations.items():
+        if hasattr(key, "label"):
+            dealiased_deviations.update({key.label: values})
+        dealiased_deviations.update({key: values})
+    return CcMetaDeviationsInfo(deviations = dealiased_deviations)
 
 _make_cc_meta_deviations = rule(
     implementation = _make_cc_meta_deviations_impl,
@@ -223,22 +228,39 @@ def _cc_meta_aspect_impl(target, ctx):
 
     # In theory, we could be faster and stricter to compute the include paths, but Bazel seems
     # to do some weird things, especially with generated files that make any reconstruction based
-    # on hdrs paths and attributes like strip_include_prefix and include_prefix impossible.
-    # Instead, we just brute-force to the shortest include path we could use for each header.
-    # N.B.: It might make sense to add all possible partial include paths.
+    # on hdrs paths and attributes like strip_include_prefix and include_prefix very hard.
+    # Instead, we just brute-force to the all possible include paths we could use for each header.
     # Usually, generated header paths might be:
     #  bazel-out/k8-dbg/bin/external/foo_cc_proto~/_virtual_includes/foo_proto/bar/foo.pb.h
     # Somewhere in external_includes or quote_includes, we'll find:
     #  bazel-out/k8-dbg/bin/external/foo_cc_proto~/_virtual_includes/foo_proto
     # But technically "_virtual_includes/foo_proto/bar/foo.pb.h" is also a valid (and very stupid) include path.
     for direct_hdr in target[CcInfo].compilation_context.direct_public_headers + target[CcInfo].compilation_context.direct_textual_headers:
-        shortest_header_path = direct_hdr.path
+        direct_hdr_path_is_virtual = (direct_hdr.path.count("/_virtual_includes/") > 0)
+        hacky_suffixes = []
+        if hasattr(ctx.rule.attr, "includes") and not direct_hdr_path_is_virtual:
+            for incl_path in ctx.rule.attr.includes:
+                hacky_suffixes.append(paths.join(target.label.package, incl_path.lstrip("/")))
+            for hacky_suffix in hacky_suffixes:
+                if paths.starts_with(direct_hdr.path, hacky_suffix):
+                    potential_header_path = paths.relativize(direct_hdr.path, hacky_suffix)
+                    public_header_paths.append(potential_header_path)
+        if hasattr(ctx.rule.attr, "strip_include_prefix") and not direct_hdr_path_is_virtual:
+            hacky_suffixes.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
         for ext_incl in target[CcInfo].compilation_context.external_includes.to_list() + target[CcInfo].compilation_context.quote_includes.to_list():
-            if paths.starts_with(direct_hdr.path, ext_incl):
-                potential_header_path = paths.relativize(direct_hdr.path, ext_incl)
-                if len(potential_header_path) < len(shortest_header_path):
-                    shortest_header_path = potential_header_path
-        public_header_paths.append(shortest_header_path)
+            if not paths.starts_with(direct_hdr.path, ext_incl):
+                continue
+            potential_stems = []
+            for hacky_suffix in hacky_suffixes:
+                potential_stems.append(paths.join(ext_incl, hacky_suffix))
+            if direct_hdr_path_is_virtual:
+                potential_stems.append(paths.join(ext_incl, target.label.package, "_virtual_includes", target.label.name))
+            else:
+                potential_stems.append(ext_incl)
+            for potential_stem in potential_stems:
+                if paths.starts_with(direct_hdr.path, potential_stem):
+                    potential_header_path = paths.relativize(direct_hdr.path, potential_stem)
+                    public_header_paths.append(potential_header_path)
 
     if not ctx.rule.kind in ["cc_binary", "cc_library", "cc_test"]:
         # We don't really know if these targets can be analysed, and we cannot remove them as 'unused'.
@@ -250,7 +272,7 @@ def _cc_meta_aspect_impl(target, ctx):
         output = pub_hdrs_file,
         content = json.encode_indent([{
             "alwaysused": target_alwaysused,
-            "exports": public_header_paths,
+            "exports": set(public_header_paths),
             "target": target_qualified_name,
         }], indent = "  "),
     )
