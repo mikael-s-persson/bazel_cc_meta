@@ -1,5 +1,6 @@
 """Some aspects for the cc_meta extraction"""
 
+load("@bazel_skylib//lib:collections.bzl", "collections")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc:action_names.bzl", "ASSEMBLE_ACTION_NAME", "CPP_COMPILE_ACTION_NAME", "C_COMPILE_ACTION_NAME", "OBJCPP_COMPILE_ACTION_NAME", "OBJC_COMPILE_ACTION_NAME", "PREPROCESS_ASSEMBLE_ACTION_NAME")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cpp_toolchain", "use_cc_toolchain")
@@ -272,7 +273,7 @@ def _cc_meta_aspect_impl(target, ctx):
         output = pub_hdrs_file,
         content = json.encode_indent([{
             "alwaysused": target_alwaysused,
-            "exports": set(public_header_paths),
+            "exports": collections.uniq(public_header_paths),
             "target": target_qualified_name,
         }], indent = "  "),
     )
