@@ -1,0 +1,25 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+
+# At the start of a new project, you might want a bunch of targets that you
+# anticipate to use to be analyzed so that their exports are known and code
+# completion can work before you've even written any code that depends on
+# those targets.
+# By creating a filegroup with all those targets, they will be built from "all"
+# and therefore, analyzed by the bazel_cc_meta aspects.
+filegroup(
+    name = "allowed_targets",
+    srcs = [
+        "//examples/default_good:lowest",
+        "//examples/default_good:middle",
+    ],
+)
+
+# bazel run //examples/empty_start:refresh
+# Expecting compile_commands.json and target_exports.json to contain
+# everything about the targets listed in 'allowed_targets' even though
+# there is no code currently depending on it yet.
+refresh_cc_meta(
+    name = "refresh",
+    targets = ["//examples/empty_start:all"],
+    visibility = ["//visibility:public"],
+)

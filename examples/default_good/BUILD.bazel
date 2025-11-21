@@ -6,6 +6,7 @@ cc_library(
     hdrs = [
         "lowest.h",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -19,6 +20,7 @@ cc_library(
     textual_hdrs = [
         "middle_impl.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":lowest",
     ],
