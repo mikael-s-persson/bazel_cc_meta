@@ -40,6 +40,7 @@ def _get_target_list(target_patterns: list):
         target_list_cquery_process = subprocess.run(
             target_list_cquery_args,
             capture_output=True,
+            encoding='utf-8',
         )
 
         if target_list_cquery_process.returncode != 0:
@@ -49,7 +50,7 @@ def _get_target_list(target_patterns: list):
         target_list.update(
             set(
                 [
-                    s.decode().split()[0]
+                    s.split()[0]
                     for s in target_list_cquery_process.stdout.splitlines()
                 ]
             )
