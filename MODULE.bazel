@@ -4,9 +4,9 @@ module(
     bazel_compatibility = [">=7.4.0"],
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.7.1")
-bazel_dep(name = "rules_cc", version = "0.1.1")
-bazel_dep(name = "rules_python", version = "1.2.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -17,4 +17,4 @@ python.toolchain(
 )
 use_repo(python, "python_versions")
 
-bazel_dep(name = "buildozer", version = "8.0.3")
+bazel_dep(name = "buildozer", version = "8.2.1")
