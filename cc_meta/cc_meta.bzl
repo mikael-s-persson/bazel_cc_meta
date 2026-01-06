@@ -418,7 +418,8 @@ def _cc_meta_aspect_impl(target, ctx):
 
             # Create a temporary file as 'source.cc.cc_meta_include_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            incl_file = ctx.actions.declare_file(f.path + ".cc_meta_includes_for_" + target.label.name)
+            f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
+            incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 
             # Invoke the preprocessor (why does Bazel make this so convoluted?)
@@ -465,7 +466,7 @@ def _cc_meta_aspect_impl(target, ctx):
 
             # Create a temporary file as 'source.cc.cc_meta_all_includes_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            all_incl_file = ctx.actions.declare_file(f.path + ".cc_meta_all_includes_for_" + target.label.name)
+            all_incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_all_includes_for_" + target.label.name)
             all_incl_files.append(all_incl_file)
 
             # Invoke the preprocessor (why does Bazel make this so convoluted?)
