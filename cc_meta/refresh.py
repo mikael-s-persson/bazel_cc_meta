@@ -40,7 +40,7 @@ def _get_target_list(target_patterns: list):
         target_list_cquery_process = subprocess.run(
             target_list_cquery_args,
             capture_output=True,
-            encoding='utf-8',
+            encoding="utf-8",
         )
 
         if target_list_cquery_process.returncode != 0:
@@ -48,12 +48,7 @@ def _get_target_list(target_patterns: list):
             sys.exit(target_list_cquery_process.returncode)
 
         target_list.update(
-            set(
-                [
-                    s.split()[0]
-                    for s in target_list_cquery_process.stdout.splitlines()
-                ]
-            )
+            set([s.split()[0] for s in target_list_cquery_process.stdout.splitlines()])
         )
 
     # Log clear completion messages
@@ -235,8 +230,75 @@ def _ensure_cwd_is_workspace_root():
     return workspace_root
 
 
+def _get_workspace_exec_root(ws_root):
+
+    # We are looking for the execroot.
+    # See https://bazel.build/remote/output-directories
+    # We want the path ending in "execroot/_main" in build cache, but we prefer the relative symlink
+    # since that would be rewired correctly if the cache directory is moved (e.g., bazel clean).
+
+    # First, attempt to get the bazel-<workspace-name> path (symlink to cache dir).
+    info_ws_process = subprocess.run(
+        ["bazel", "info", "workspace"],
+        capture_output=True,
+    )
+
+    if info_ws_process.returncode == 0 and info_ws_process.stdout:
+        ws_name = pathlib.Path(info_ws_process.stdout.decode().strip()).name
+        ws_rel_exec_root = ws_root / ("bazel-" + ws_name)
+        if ws_rel_exec_root.exists():
+            return ws_rel_exec_root
+        else:
+            print(
+                "WARNING: Relative workspace execution root path '{}' does not exist! "
+                "(Have you built the project at least once? Is this a remote or read-only workspace?) "
+                "Falling back to absolute path in Bazel's current cache, this could be less stable over time.".format(
+                    ws_rel_exec_root
+                ),
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "ERROR: Getting workspace name from 'bazel info' failed!\n{}".format(
+                info_ws_process.stderr
+            ),
+            file=sys.stderr,
+        )
+
+    # Second, attempt to get the bazel cache execroot directly.
+    info_er_process = subprocess.run(
+        ["bazel", "info", "execution_root"],
+        capture_output=True,
+    )
+
+    if info_er_process.returncode == 0 and info_er_process.stdout:
+        ws_abs_exec_root = pathlib.Path(info_er_process.stdout.decode().strip())
+        if ws_abs_exec_root.exists():
+            return ws_abs_exec_root
+        else:
+            print(
+                "WARNING: Absolute workspace exec root '{}' does not exist! "
+                "(Have you built the project at least once? Is this a remote build?) "
+                "Falling back to workspace root path, this could affect paths to external dependencies.".format(
+                    ws_abs_exec_root
+                ),
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "ERROR: Getting execution_root path from 'bazel info' failed!\n{}".format(
+                info_er_process.stderr
+            ),
+            file=sys.stderr,
+        )
+
+    return ws_root
+
+
 if __name__ == "__main__":
     workspace_root = _ensure_cwd_is_workspace_root()
+
+    workspace_execroot = _get_workspace_exec_root(workspace_root)
 
     target_patterns = [
         # Begin: template filled by Bazel
@@ -245,7 +307,7 @@ if __name__ == "__main__":
     ]
 
     comp_cmds, exports, deps_issues = _gather_cc_meta(
-        _get_target_list(target_patterns), str(workspace_root)
+        _get_target_list(target_patterns), str(workspace_execroot)
     )
 
     if not comp_cmds:
