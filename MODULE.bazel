@@ -8,6 +8,7 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_cc", version = "0.2.16")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "buildozer", version = "8.2.1")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
@@ -16,5 +17,3 @@ python.toolchain(
     python_version = "3.8",
 )
 use_repo(python, "python_versions")
-
-bazel_dep(name = "buildozer", version = "8.2.1")

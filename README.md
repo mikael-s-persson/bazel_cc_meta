@@ -21,6 +21,31 @@ Choose a release from the [release page](https://github.com/mikael-s-persson/baz
 
 ### MODULE.bazel (recommended)
 
+Importing into a Bazel module is done as usual. Some examples are given below.
+
+#### Release version as `http_archive`
+
+Put the following into your MODULE.bazel file (filling in version numbers and SHA)
+
+```python
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+bazel_dep(name = "bazel_skylib", version = "<insert appropriate version number>")
+bazel_dep(name = "rules_python", version = "<insert appropriate version number>")
+bazel_dep(name = "rules_cc", version = "<insert appropriate version number>")
+bazel_dep(name = "rules_shell", version = "<insert appropriate version number>")
+bazel_dep(name = "buildozer", version = "<insert appropriate version number>")
+
+http_archive(
+    name = "bazel_cc_meta",
+    integrity = "<insert sha integrity check>",
+    strip_prefix = "bazel_cc_meta-X.Y.Z",
+    urls = ["https://github.com/mikael-s-persson/bazel_cc_meta/archive/refs/tags/vX.Y.Z.tar.gz"],
+)
+```
+
+#### Git commit as `git_override`
+
 Put the following into your MODULE.bazel file
 
 ```python
