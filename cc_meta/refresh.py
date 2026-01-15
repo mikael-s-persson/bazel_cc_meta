@@ -120,6 +120,8 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         "--show_result=10000",
         # Keep going even if errors occur
         "-k",
+        # Skip incompatible explicit targets listed (approximate cquery)
+        "--skip_incompatible_explicit_targets",
     ] + sys.argv[1:]
 
     target_build_args = (
@@ -206,7 +208,11 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         del cmd["compile_file"]
         combined_compile_commands.append(cmd)
 
-    print("\r>>> Finished extracting cc-meta-info")
+    print(
+        "\r>>> Finished extracting cc-meta-info (got {} files indexed)".format(
+            len(compile_commands_by_file)
+        )
+    )
 
     return combined_compile_commands, combined_exports_dict, combined_deps_issues_dict
 
