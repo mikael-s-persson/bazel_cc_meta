@@ -299,20 +299,10 @@ my_cc_meta_aspect_for_linux = cc_meta_aspect_factory(
 The `refresh` tool must use Bazel's `cquery` command to obtain a full list of dependencies spawning from the
 given target pattern (e.g., `//...:all`) and attempts to do so using the `cquery`
 (aka [Configurable Query](https://bazel.build/query/cquery)) in order to respect the build configuration
-(e.g., `--config=`, `-c dbg`, etc.). This facility is approximate and tends to yield targets that are not
-actually compatible with the given configuration. Those will cause spurious warnings and errors of the form:
-
-```
-Failed to build all targets. Results will be partial.
-WARNING: errors encountered while analyzing target '//some/incompatible:target', it will not be built.
-WARNING: errors encountered while analyzing target '//some/incompatible:other', it will not be built.
-...
-ERROR: command succeeded, but not all targets were analyzed
-ERROR: Build did NOT complete successfully
-```
-
-These failures are spurious and simply come from trying to explicitly "build" targets in an incompatible
-configuration.
+(e.g., `--config=`, `-c dbg`, etc.). This facility is approximate and could result in missing some targets.
+If you suspect that is the case (if using a particularly difficult configuration, such as for cross-compilation),
+then you can check what `bazel cquery //...:all` produces and if it lacks certain desired target, create
+your own custom 'refresh' rule (see previous section) with a more fine-grained target pattern.
 
 ## Common problematic libraries
 
