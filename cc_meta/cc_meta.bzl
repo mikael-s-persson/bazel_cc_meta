@@ -520,7 +520,9 @@ def _cc_meta_aspect_impl(target, ctx):
             quote_include_directories = target[CcInfo].compilation_context.quote_includes,
             system_include_directories = depset(
                 # Include built-in include directories in case of cross-compilation.
-                cc_toolchain.built_in_include_directories,
+                # We have to be careful not to add absolute paths, they mess with include_next. Bazel does the same:
+                # See note in CppIncludeScanningContextImpl::findAdditionalInputs function, filtering out absolute paths.
+                [d for d in cc_toolchain.built_in_include_directories if not paths.is_absolute(d)],
                 transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
             ),
             framework_include_directories = target[CcInfo].compilation_context.framework_includes,
