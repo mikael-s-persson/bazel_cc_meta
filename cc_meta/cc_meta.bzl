@@ -510,6 +510,18 @@ def _cc_meta_aspect_impl(target, ctx):
                 outputs = [all_incl_file],
             )
 
+        # Check if any built-in compiler path is relative, as a proxy for a cross-compilation or hermetic
+        # toolchain being used. If there are some relative built-in paths, then the safest thing to do is
+        # to explicitely pass the built-in include paths, since the system clangd or whatever is going to
+        # need that. If not, prefer to avoid passing them explicitly, it messes with include_next and such
+        # shenanigans that standard library headers love to inflict on people.
+        # Bazel does something similar, see CppIncludeScanningContextImpl::findAdditionalInputs
+        any_rel_path = False
+        for d in cc_toolchain.built_in_include_directories:
+            if not paths.is_absolute(d):
+                any_rel_path = True
+                break
+
         # Make the actual compiler command
         cc_cmd_compile_variables = cc_common.create_compile_variables(
             feature_configuration = feature_configuration,
@@ -520,9 +532,7 @@ def _cc_meta_aspect_impl(target, ctx):
             quote_include_directories = target[CcInfo].compilation_context.quote_includes,
             system_include_directories = depset(
                 # Include built-in include directories in case of cross-compilation.
-                # We have to be careful not to add absolute paths, they mess with include_next. Bazel does the same:
-                # See note in CppIncludeScanningContextImpl::findAdditionalInputs function, filtering out absolute paths.
-                [d for d in cc_toolchain.built_in_include_directories if not paths.is_absolute(d)],
+                cc_toolchain.built_in_include_directories if any_rel_path else [],
                 transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
             ),
             framework_include_directories = target[CcInfo].compilation_context.framework_includes,
