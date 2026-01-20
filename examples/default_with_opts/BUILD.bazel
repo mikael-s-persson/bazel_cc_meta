@@ -1,0 +1,61 @@
+load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+cc_library(
+    name = "lowest",
+    hdrs = [
+        "lowest.h",
+    ],
+    copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "middle",
+    srcs = [
+        "middle.cc",
+    ],
+    hdrs = [
+        "middle.h",
+    ],
+    copts = ["-std=c++20"],
+    defines = ["PINEAPPLE_ON_PIZZA"],
+    textual_hdrs = [
+        "middle_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lowest",
+    ],
+)
+
+cc_binary(
+    name = "middle_printer",
+    srcs = [
+        "middle_printer.cc",
+    ],
+    copts = ["-std=c++20"],
+    deps = [
+        ":middle",
+    ],
+)
+
+cc_test(
+    name = "middle_test",
+    srcs = [
+        "middle_test.cc",
+    ],
+    copts = ["-std=c++20"],
+    deps = [
+        ":middle",
+    ],
+)
+
+# bazel run //examples/default_with_opts:refresh
+# Expecting empty dependency_issues.json
+# Expect to find "-std=c++20" and "-DPINEAPPLE_ON_PIZZA" in the compile commands.
+refresh_cc_meta(
+    name = "refresh",
+    targets = ["//examples/default_with_opts:all"],
+    visibility = ["//visibility:public"],
+)

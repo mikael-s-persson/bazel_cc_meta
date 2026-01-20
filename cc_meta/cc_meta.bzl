@@ -372,15 +372,23 @@ def _cc_meta_aspect_impl(target, ctx):
 
         # Figure out what compilation options we need.
         user_flags = ctx.fragments.cpp.copts
+        rule_flags = []
+        rule_flags += ctx.rule.attr.copts
         if f.extension in _C_SOURCE:
             user_flags += ctx.fragments.cpp.conlyopts
+            rule_flags += ctx.rule.attr.conlyopts
         if (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
             user_flags += ctx.fragments.cpp.cxxopts
+            rule_flags += ctx.rule.attr.cxxopts
         if is_target_objc:
             user_flags += ctx.fragments.cpp.objccopts
+        if f.extension in _OBJC_SOURCE:
+            rule_flags += ctx.rule.attr.conlyopts
 
         # Specify language explicitly if we have a header without any specific user option.
-        action_name = _get_action_from_lang_spec(user_flags)
+        action_name = _get_action_from_lang_spec(rule_flags)
+        if not action_name:
+            action_name = _get_action_from_lang_spec(user_flags)
 
         # Overwrite action if we have a header, Bazel plus-pluses headers.
         if f.extension in _CC_HEADER:
@@ -390,6 +398,8 @@ def _cc_meta_aspect_impl(target, ctx):
             else:
                 action_name = CPP_COMPILE_ACTION_NAME
                 user_flags += ["-x", "c++-header"]
+
+        # If all else fails, imply action from file extension.
         if not action_name:
             if f.extension in _C_SOURCE:
                 action_name = C_COMPILE_ACTION_NAME
@@ -426,7 +436,7 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags + ["-MM", "-MF", incl_file.path, "-E", "-MG"],
+                user_compile_flags = user_flags + ["-MM", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
                 source_file = f.path,
                 # A successful compilation would require all include paths, but:
                 #  '-E' means we only preprocess.
@@ -473,7 +483,7 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_all_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags + ["-M", "-MF", all_incl_file.path, "-E", "-MG"],
+                user_compile_flags = user_flags + ["-M", "-MF", all_incl_file.path, "-E", "-MG"] + rule_flags,
                 source_file = f.path,
                 include_directories = target[CcInfo].compilation_context.includes,
                 quote_include_directories = target[CcInfo].compilation_context.quote_includes,
@@ -526,7 +536,7 @@ def _cc_meta_aspect_impl(target, ctx):
         cc_cmd_compile_variables = cc_common.create_compile_variables(
             feature_configuration = feature_configuration,
             cc_toolchain = cc_toolchain,
-            user_compile_flags = user_flags,
+            user_compile_flags = user_flags + rule_flags,
             source_file = f.path,
             include_directories = target[CcInfo].compilation_context.includes,
             quote_include_directories = target[CcInfo].compilation_context.quote_includes,
