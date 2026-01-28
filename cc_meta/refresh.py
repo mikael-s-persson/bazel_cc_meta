@@ -198,9 +198,8 @@ def _gather_cc_meta(target_list: list, top_dir: str):
                 "compile_file": comp_cmd["compile_file"],
                 "directory": top_dir,
             }
-            if (imp_file not in compile_commands_by_file) or _should_update_comp_cmd(
-                compile_commands_by_file[imp_file], new_cmd
-            ):
+            if ((imp_file not in compile_commands_by_file) or
+                _should_update_comp_cmd(compile_commands_by_file[imp_file], new_cmd)):
                 compile_commands_by_file.update({imp_file: new_cmd})
 
     combined_compile_commands = []
