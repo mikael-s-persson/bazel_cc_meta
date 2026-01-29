@@ -145,8 +145,11 @@ def _gather_cc_meta(target_list: list, top_dir: str):
 
     compile_commands_by_file = {}
     combined_all_imports_list = []
+    target_to_sys_imports_dict = {}  # Target name to system_imports
     combined_exports_dict = {}  # Target name to exports
     combined_deps_issues_dict = {}  # Target name to deps issues
+
+    targets_by_export = {}
 
     for out_ln in target_build_process.stderr.splitlines():
         out_ln_str = out_ln.decode()
@@ -169,11 +172,28 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         elif out_ln_str.endswith("_cc_meta_all_imports.json"):
             all_imports_list = _load_json_or_empty_list(out_ln_str.lstrip())
             combined_all_imports_list.extend(all_imports_list)
+        elif out_ln_str.endswith("_cc_meta_imports.json"):
+            target_imports_list = _load_json_or_empty_list(out_ln_str.lstrip())
+            target_to_sys_imports_dict.update(
+                {
+                    te["target"]: te["system_imports"]
+                    for te in target_imports_list
+                    if ("system_imports" in te)
+                }
+            )
         elif out_ln_str.endswith("_cc_meta_exports.json"):
             target_exports_list = _load_json_or_empty_list(out_ln_str.lstrip())
             combined_exports_dict.update(
                 {te["target"]: te for te in target_exports_list}
             )
+            for te in target_exports_list:
+                for incl_path in te["exports"]:
+                    if incl_path not in targets_by_export:
+                        targets_by_export.update({incl_path: [te["target"]]})
+                    else:
+                        targets_by_export.update(
+                            {incl_path: targets_by_export[incl_path] + [te["target"]]}
+                        )
         elif out_ln_str.endswith("_cc_meta_deps_issues.json"):
             target_deps_issues_list = _load_json_or_empty_list(out_ln_str.lstrip())
             combined_deps_issues_dict.update(
@@ -200,14 +220,28 @@ def _gather_cc_meta(target_list: list, top_dir: str):
                 "compile_file": comp_cmd["compile_file"],
                 "directory": top_dir,
             }
-            if ((imp_file not in compile_commands_by_file) or
-                _should_update_comp_cmd(compile_commands_by_file[imp_file], new_cmd)):
+            if (imp_file not in compile_commands_by_file) or _should_update_comp_cmd(
+                compile_commands_by_file[imp_file], new_cmd
+            ):
                 compile_commands_by_file.update({imp_file: new_cmd})
 
     combined_compile_commands = []
     for cmd in compile_commands_by_file.values():
         del cmd["compile_file"]
         combined_compile_commands.append(cmd)
+
+    for target_name, target_sys_imports in target_to_sys_imports_dict.items():
+        for imp_file in target_sys_imports:
+            if imp_file in targets_by_export:
+                print(
+                    "WARNING: Target '{}' includes '{}', which is resolved to a built-in "
+                    "or system directory, but is also provided by targets '{}'! There is "
+                    "probably a missing dependency. This must be fixed manually. "
+                    "Transitive dependencies could affect compilation results.".format(
+                        target_name, imp_file, targets_by_export[imp_file]
+                    ),
+                    file=sys.stderr,
+                )
 
     print(
         "\r>>> Finished extracting cc-meta-info (got {} files indexed)".format(
