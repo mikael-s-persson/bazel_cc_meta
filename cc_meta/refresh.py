@@ -122,6 +122,8 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         "-k",
         # Skip incompatible explicit targets listed (approximate cquery)
         "--skip_incompatible_explicit_targets",
+        "--generate_json_trace_profile",
+        "--profile=/tmp/bazel_command.profile.gz",
     ] + sys.argv[1:]
 
     target_build_args = (

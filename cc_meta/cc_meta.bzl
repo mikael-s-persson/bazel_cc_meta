@@ -481,15 +481,15 @@ def _cc_meta_aspect_impl(target, ctx):
                 action_name = action_name,
                 variables = cc_incl_compile_variables,
             )
+            get_dir_incl_args = ctx.actions.args()
+            get_dir_incl_args.add(cc_compiler_path)
+            get_dir_incl_args.add_all(cc_incl_command_line)
             ctx.actions.run(
                 mnemonic = "CcGetDirectIncludes",
                 executable = ctx.executable._run_suppress_stdout,
-                arguments = [cc_compiler_path] + cc_incl_command_line,
+                arguments = [get_dir_incl_args],
                 env = cc_incl_env,
-                inputs = depset(
-                    [f] + target[CcInfo].compilation_context.headers.to_list(),
-                    transitive = [cc_toolchain.all_files],
-                ),
+                inputs = depset([f], transitive = [cc_toolchain.all_files]),
                 outputs = [incl_file],
             )
 
@@ -531,14 +531,17 @@ def _cc_meta_aspect_impl(target, ctx):
                 action_name = action_name,
                 variables = cc_all_incl_compile_variables,
             )
+            get_all_incl_args = ctx.actions.args()
+            get_all_incl_args.add(cc_compiler_path)
+            get_all_incl_args.add_all(cc_all_incl_command_line)
             ctx.actions.run(
                 mnemonic = "CcGetAllIncludes",
                 executable = ctx.executable._run_suppress_stdout,
-                arguments = [cc_compiler_path] + cc_all_incl_command_line,
+                arguments = [get_all_incl_args],
                 env = cc_all_incl_env,
                 inputs = depset(
-                    [f] + target[CcInfo].compilation_context.headers.to_list(),
-                    transitive = [cc_toolchain.all_files],
+                    [f],
+                    transitive = [cc_toolchain.all_files, target[CcInfo].compilation_context.headers],
                 ),
                 outputs = [all_incl_file],
             )
@@ -604,19 +607,27 @@ def _cc_meta_aspect_impl(target, ctx):
         })
 
     # This action combines the imports for each source file into one set of imports.
+    comb_dir_imports_args = ctx.actions.args()
+    comb_dir_imports_args.add_all(dep_sys_imports_files)
+    comb_dir_imports_args.add(comb_incl_file)
+    comb_dir_imports_args.add(target_qualified_name)
     ctx.actions.run(
         mnemonic = "CcCombineDirectImports",
         executable = ctx.executable._combine_direct_imports,
-        arguments = [f.path for f in dep_sys_imports_files] + [comb_incl_file.path] + [target_qualified_name],
+        arguments = [comb_dir_imports_args],
         inputs = depset(dep_sys_imports_files),
         outputs = [comb_incl_file],
     )
 
     # This action reads the Makefile outputs with includes listed for each source file into one set of imports.
+    comb_incl_lists_args = ctx.actions.args()
+    comb_incl_lists_args.add_all(all_incl_files)
+    comb_incl_lists_args.add(comb_all_incl_file)
+    comb_incl_lists_args.add(target_qualified_name)
     ctx.actions.run(
         mnemonic = "CcCombineIncludesLists",
         executable = ctx.executable._combine_includes_lists,
-        arguments = [f.path for f in all_incl_files] + [comb_all_incl_file.path] + [target_qualified_name],
+        arguments = [comb_incl_lists_args],
         inputs = depset(all_incl_files),
         outputs = [comb_all_incl_file],
     )
@@ -647,10 +658,14 @@ def _cc_meta_aspect_impl(target, ctx):
         # If this target forwards its exports it will find itself for all its includes,
         # so that will make all its deps appear unused, so we just remove them.
         # We should still detect 'not_found' includes, so we still need to run the checker.
+        check_dir_exports_args = ctx.actions.args()
+        check_dir_exports_args.add(pub_hdrs_file)
+        check_dir_exports_args.add(comb_incl_file)
+        check_dir_exports_args.add(deps_issues_file)
         ctx.actions.run(
             mnemonic = "CcCheckDirectDepsExports",
             executable = ctx.executable._check_direct_deps_exports,
-            arguments = [pub_hdrs_file.path] + [comb_incl_file.path] + [deps_issues_file.path],
+            arguments = [check_dir_exports_args],
             inputs = depset([pub_hdrs_file] + [comb_incl_file]),
             outputs = [deps_issues_file],
         )
@@ -664,10 +679,15 @@ def _cc_meta_aspect_impl(target, ctx):
             deps_direct_exports.append(dep[CcMetaInfo].direct_exports_json)
 
         # Check includes against exports from target itself and its direct dependencies.
+        check_dir_exports_args = ctx.actions.args()
+        check_dir_exports_args.add_all(deps_direct_exports)
+        check_dir_exports_args.add(pub_hdrs_file)
+        check_dir_exports_args.add(comb_incl_file)
+        check_dir_exports_args.add(deps_issues_file)
         ctx.actions.run(
             mnemonic = "CcCheckDirectDepsExports",
             executable = ctx.executable._check_direct_deps_exports,
-            arguments = [f.path for f in deps_direct_exports] + [pub_hdrs_file.path] + [comb_incl_file.path] + [deps_issues_file.path],
+            arguments = [check_dir_exports_args],
             inputs = depset(deps_direct_exports + [pub_hdrs_file] + [comb_incl_file]),
             outputs = [deps_issues_file],
         )
