@@ -10,17 +10,9 @@ def read_json_file(file_name):
 
 def _add_or_fuse_with_set(key, new_set, all_sets):
     if key not in all_sets:
-        all_sets.update(
-            {
-                key: new_set
-            }
-        )
+        all_sets.update({key: new_set})
     else:
-        all_sets.update(
-            {
-                key: all_sets[key] | new_set
-            }
-        )
+        all_sets.update({key: all_sets[key] | new_set})
 
 
 if __name__ == "__main__":
@@ -60,10 +52,18 @@ if __name__ == "__main__":
     targets_imports_by_target = {}
     targets_sys_imports_by_target = {}
     for target_imports in targets_imports:
-        _add_or_fuse_with_set(target_imports["target"], set([(imp, "") for imp in target_imports["imports"]]), targets_imports_by_target)
+        _add_or_fuse_with_set(
+            target_imports["target"],
+            set([(imp, "") for imp in target_imports["imports"]]),
+            targets_imports_by_target,
+        )
         if "system_imports" in target_imports:
-            _add_or_fuse_with_set(target_imports["target"], set([(imp, "") for imp in target_imports["system_imports"]]), targets_sys_imports_by_target)
-    
+            _add_or_fuse_with_set(
+                target_imports["target"],
+                set([(imp, "") for imp in target_imports["system_imports"]]),
+                targets_sys_imports_by_target,
+            )
+
     targets_deps_issues = []
     for target_name, target_imports_set in targets_imports_by_target.items():
         target_imports_list = sorted(target_imports_set)
