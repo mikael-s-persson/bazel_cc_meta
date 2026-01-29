@@ -105,7 +105,7 @@ def main():
             rut = _resolve_target_name(ut)
             buildozer_rm.append(rut)
         if buildozer_rm:
-            buildozer_process = subprocess.run(
+            subprocess.run(
                 [
                     args.buildozer,
                     "-k",
@@ -147,7 +147,7 @@ def main():
             except ValueError:
                 buildozer_add.append(new_target)
         if buildozer_add:
-            buildozer_process = subprocess.run(
+            subprocess.run(
                 [
                     args.buildozer,
                     "-k",

@@ -24,16 +24,27 @@ def main():
         in_data = {}
         with open(in_file_name, "r") as f:
             in_data = json.load(f)
-        if (("source_file" not in in_data) or ("dep_imports" not in in_data) or ("sys_imports" not in in_data)):
+        if (
+            ("source_file" not in in_data)
+            or ("dep_imports" not in in_data)
+            or ("sys_imports" not in in_data)
+        ):
             print(
-                "Missing entries in direct imports json file '{}'. Got {}. Aborting...".format(in_file_name, in_data.keys()),
+                "Missing entries in direct imports json file '{}'. Got {}. Aborting...".format(
+                    in_file_name, in_data.keys()
+                ),
                 file=sys.stderr,
             )
             sys.exit(1)
         if not in_data["source_file"]:
             continue
         combined_inc_list.append(
-            {"source_file": in_data["source_file"], "target": target_name, "imports": in_data["dep_imports"], "system_imports": in_data["sys_imports"]}
+            {
+                "source_file": in_data["source_file"],
+                "target": target_name,
+                "imports": in_data["dep_imports"],
+                "system_imports": in_data["sys_imports"],
+            }
         )
 
     out_file_name = args.file_list[-2]

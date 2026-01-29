@@ -117,5 +117,6 @@ def main():
     with open(out_file_name, "w") as out_file:
         json.dump(targets_deps_issues, out_file, sort_keys=True, indent=2)
 
+
 if __name__ == "__main__":
     main()

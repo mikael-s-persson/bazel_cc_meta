@@ -1,7 +1,7 @@
 import argparse
 import json
-import sys
 import os
+import sys
 from pathlib import PurePath
 
 
@@ -17,13 +17,18 @@ def _includes_from_makefile(file_name):
         sys.exit(1)
     if len(md_includes_list) < 3:
         return md_includes_list[0], md_includes_list[1], []
-    return md_includes_list[0], md_includes_list[1], [PurePath(os.path.normpath(p)) for p in md_includes_list[2:]]
+    return (
+        md_includes_list[0],
+        md_includes_list[1],
+        [PurePath(os.path.normpath(p)) for p in md_includes_list[2:]],
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="IdentifyDirectIncludes",
-        description="Identify direct includes from a json dictionary of include dirs, a dump of all direct includes, and a dump of all includes.",
+        description="Identify direct includes from a json dictionary of include dirs, "
+        "a dump of all direct includes, and a dump of all includes.",
     )
     parser.add_argument("incl_dirs_file")
     parser.add_argument("direct_incl_makefile")
@@ -35,25 +40,45 @@ def main():
     with open(args.incl_dirs_file, "r") as f:
         incl_dirs = json.load(f)
 
-    if (("include_dirs" not in incl_dirs) or ("iquote_dirs" not in incl_dirs) or
-        ("isystem_dirs" not in incl_dirs) or ("builtin_dirs" not in incl_dirs)):
+    if (
+        ("include_dirs" not in incl_dirs)
+        or ("iquote_dirs" not in incl_dirs)
+        or ("isystem_dirs" not in incl_dirs)
+        or ("builtin_dirs" not in incl_dirs)
+    ):
         print(
-            "Missing some lists of include dirs is '{}'! Got {}. Aborting...".format(args.incl_dirs_file, incl_dirs.keys()),
+            "Missing some lists of include dirs is '{}'! Got {}. Aborting...".format(
+                args.incl_dirs_file, incl_dirs.keys()
+            ),
             file=sys.stderr,
         )
         sys.exit(1)
 
-    incl_dirs_i = frozenset([PurePath(os.path.normpath(p)) for p in incl_dirs["include_dirs"]])
-    incl_dirs_iquote = frozenset([PurePath(os.path.normpath(p)) for p in incl_dirs["iquote_dirs"]])
-    incl_dirs_isystem = frozenset([PurePath(os.path.normpath(p)) for p in incl_dirs["isystem_dirs"]])
-    incl_dirs_builtin = frozenset([PurePath(os.path.normpath(p)) for p in incl_dirs["builtin_dirs"]])
+    incl_dirs_i = frozenset(
+        [PurePath(os.path.normpath(p)) for p in incl_dirs["include_dirs"]]
+    )
+    incl_dirs_iquote = frozenset(
+        [PurePath(os.path.normpath(p)) for p in incl_dirs["iquote_dirs"]]
+    )
+    incl_dirs_isystem = frozenset(
+        [PurePath(os.path.normpath(p)) for p in incl_dirs["isystem_dirs"]]
+    )
+    incl_dirs_builtin = frozenset(
+        [PurePath(os.path.normpath(p)) for p in incl_dirs["builtin_dirs"]]
+    )
 
-    dincl_obj_file, dincl_src_file, dincl_incl_list = _includes_from_makefile(args.direct_incl_makefile)
-    aincl_obj_file, aincl_src_file, aincl_incl_list = _includes_from_makefile(args.all_incl_makefile)
+    dincl_obj_file, dincl_src_file, dincl_incl_list = _includes_from_makefile(
+        args.direct_incl_makefile
+    )
+    aincl_obj_file, aincl_src_file, aincl_incl_list = _includes_from_makefile(
+        args.all_incl_makefile
+    )
 
     if dincl_obj_file != aincl_obj_file or dincl_src_file != aincl_src_file:
         print(
-            "Object files or source files in makefiles do not match! In '{}' and '{}'. Aborting...".format(args.direct_incl_makefile, args.all_incl_makefile),
+            "Object files or source files in makefiles do not match! In '{}' and '{}'. Aborting...".format(
+                args.direct_incl_makefile, args.all_incl_makefile
+            ),
             file=sys.stderr,
         )
         sys.exit(1)
@@ -97,7 +122,8 @@ def main():
     # For reference, the GCC / Clang standard inclusion ordering between the different
     # arguments is the following:
     # 1. For the quote form of the include directive, the directory of the current file is searched first.
-    # 2. For the quote form of the include directive, the directories specified by -iquote options are searched in left-to-right order, as they appear on the command line.
+    # 2. For the quote form of the include directive, the directories specified by -iquote
+    #    options are searched in left-to-right order, as they appear on the command line.
     # 3. Directories specified with -I options are scanned in left-to-right order.
     # 4. Directories specified with -isystem options are scanned in left-to-right order.
     # 5. Standard system directories are scanned.
@@ -108,14 +134,21 @@ def main():
         dincl_dirs = []
         for aincl_path in aincl_incl_list:
             if aincl_path.match(str(dincl_path)):
-                dincl_dirs.append(PurePath(*aincl_path.parts[:-len(dincl_path.parts)]))
+                dincl_dirs.append(PurePath(*aincl_path.parts[: -len(dincl_path.parts)]))
         found_in_dep = False
         found_in_sys = False
         for dincl_dir in dincl_dirs:
-            if ((dincl_dir in incl_dirs_i) or (dincl_dir in incl_dirs_iquote) or
-                (dincl_dir in incl_dirs_isystem)):
+            if (
+                (dincl_dir in incl_dirs_i)
+                or (dincl_dir in incl_dirs_iquote)
+                or (dincl_dir in incl_dirs_isystem)
+            ):
                 found_in_dep = True
-            elif ((dincl_dir in incl_dirs_builtin) or (dincl_dir.match("*-*-*") and dincl_dir.parent in incl_dirs_builtin) or (PurePath(dincl_src_file).parent == dincl_dir)):
+            elif (
+                (dincl_dir in incl_dirs_builtin)
+                or (dincl_dir.match("*-*-*") and dincl_dir.parent in incl_dirs_builtin)
+                or (PurePath(dincl_src_file).parent == dincl_dir)
+            ):
                 found_in_sys = True
 
         if found_in_dep or not found_in_sys:
