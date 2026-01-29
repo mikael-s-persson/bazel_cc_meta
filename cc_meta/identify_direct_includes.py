@@ -20,7 +20,7 @@ def _includes_from_makefile(file_name):
     return md_includes_list[0], md_includes_list[1], [PurePath(os.path.normpath(p)) for p in md_includes_list[2:]]
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="IdentifyDirectIncludes",
         description="Identify direct includes from a json dictionary of include dirs, a dump of all direct includes, and a dump of all includes.",
@@ -137,3 +137,5 @@ if __name__ == "__main__":
         )
 
 
+if __name__ == "__main__":
+    main()

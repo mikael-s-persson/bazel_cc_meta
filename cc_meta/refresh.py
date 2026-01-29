@@ -336,7 +336,7 @@ def _get_workspace_exec_root(ws_root):
     return ws_root
 
 
-if __name__ == "__main__":
+def main():
     workspace_root = _ensure_cwd_is_workspace_root()
 
     workspace_execroot = _get_workspace_exec_root(workspace_root)
@@ -367,3 +367,7 @@ if __name__ == "__main__":
 
     with open("dependency_issues.json", "w") as output_file:
         json.dump(deps_issues, output_file, indent=2, check_circular=False)
+
+
+if __name__ == "__main__":
+    main()

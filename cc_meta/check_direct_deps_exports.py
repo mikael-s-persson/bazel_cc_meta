@@ -15,7 +15,7 @@ def _add_or_fuse_with_set(key, new_set, all_sets):
         all_sets.update({key: all_sets[key] | new_set})
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="CheckDirectDepsExports",
         description="Check the include lists for several includes dumps (-MF).",
@@ -116,3 +116,6 @@ if __name__ == "__main__":
 
     with open(out_file_name, "w") as out_file:
         json.dump(targets_deps_issues, out_file, sort_keys=True, indent=2)
+
+if __name__ == "__main__":
+    main()

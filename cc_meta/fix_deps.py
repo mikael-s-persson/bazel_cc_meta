@@ -57,7 +57,7 @@ def _ensure_cwd_is_workspace_root():
     os.chdir(workspace_root)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="FixDependencies",
         description="Fix dependency issues with Bazel targets.",
@@ -156,3 +156,7 @@ if __name__ == "__main__":
                     resolved_target,
                 ]
             )
+
+
+if __name__ == "__main__":
+    main()

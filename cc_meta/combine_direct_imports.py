@@ -3,7 +3,7 @@ import json
 import sys
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="CombineDirectImports",
         description="Combine the direct imports from several files.",
@@ -43,3 +43,7 @@ if __name__ == "__main__":
             out_file,
             indent=2,
         )
+
+
+if __name__ == "__main__":
+    main()
