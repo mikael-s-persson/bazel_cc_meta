@@ -402,6 +402,8 @@ versions (guessing, at least Python > 3.8, and Bazel > 7.0).
 Contribute through the typical github mechanisms:
 
  - Report issues
+  - Before reporting an issue, keep in mind that LSPs / editors can be finicky and sometimes require
+    restarting the editor or clangd server to properly refresh its cache.
  - Create pull requests
 
 # License

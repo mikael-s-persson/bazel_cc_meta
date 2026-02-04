@@ -8,7 +8,14 @@ def read_json_file(file_name):
         return json.load(file)
 
 
-if __name__ == "__main__":
+def _add_or_fuse_with_set(key, new_set, all_sets):
+    if key not in all_sets:
+        all_sets.update({key: new_set})
+    else:
+        all_sets.update({key: all_sets[key] | new_set})
+
+
+def main():
     parser = argparse.ArgumentParser(
         prog="CheckDirectDepsExports",
         description="Check the include lists for several includes dumps (-MF).",
@@ -43,26 +50,22 @@ if __name__ == "__main__":
         targets_imports = [targets_imports]
     # Fuse by target
     targets_imports_by_target = {}
+    targets_sys_imports_by_target = {}
     for target_imports in targets_imports:
-        if target_imports["target"] not in targets_imports_by_target:
-            targets_imports_by_target.update(
-                {
-                    target_imports["target"]: set(
-                        [(imp, "") for imp in target_imports["imports"]]
-                    )
-                }
+        _add_or_fuse_with_set(
+            target_imports["target"],
+            set([(imp, "") for imp in target_imports["imports"]]),
+            targets_imports_by_target,
+        )
+        if "system_imports" in target_imports:
+            _add_or_fuse_with_set(
+                target_imports["target"],
+                set([(imp, "") for imp in target_imports["system_imports"]]),
+                targets_sys_imports_by_target,
             )
-        else:
-            targets_imports_by_target.update(
-                {
-                    target_imports["target"]: targets_imports_by_target[
-                        target_imports["target"]
-                    ]
-                    | set([(imp, "") for imp in target_imports["imports"]])
-                }
-            )
+
     targets_deps_issues = []
-    for target_imports_set in targets_imports_by_target.values():
+    for target_name, target_imports_set in targets_imports_by_target.items():
         target_imports_list = sorted(target_imports_set)
 
         deps_usage = {}
@@ -71,7 +74,7 @@ if __name__ == "__main__":
                 {
                     dep_exports["target"]: {
                         "used": dep_exports["alwaysused"]
-                        or dep_exports["target"] == target_imports["target"]
+                        or dep_exports["target"] == target_name
                     }
                 }
             )
@@ -104,7 +107,7 @@ if __name__ == "__main__":
 
         targets_deps_issues.append(
             {
-                "target": target_imports["target"],
+                "target": target_name,
                 "matches": imp_matches,
                 "not_found": imp_not_found,
                 "unused": dep_unused,
@@ -113,3 +116,7 @@ if __name__ == "__main__":
 
     with open(out_file_name, "w") as out_file:
         json.dump(targets_deps_issues, out_file, sort_keys=True, indent=2)
+
+
+if __name__ == "__main__":
+    main()
