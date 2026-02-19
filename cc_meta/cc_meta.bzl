@@ -357,10 +357,10 @@ def _cc_meta_aspect_impl(target, ctx):
     incl_dir_lists_file = None
     if buildable_files:
         incl_dir_lists = {
+            "builtin_dirs": cc_toolchain.built_in_include_directories,
             "include_dirs": target[CcInfo].compilation_context.includes.to_list(),
             "iquote_dirs": target[CcInfo].compilation_context.quote_includes.to_list(),
             "isystem_dirs": depset([], transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes]).to_list(),
-            "builtin_dirs": cc_toolchain.built_in_include_directories,
         }
         incl_dir_lists_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json")
         ctx.actions.write(
@@ -456,13 +456,21 @@ def _cc_meta_aspect_impl(target, ctx):
                 if not fl.startswith("-stdlib"):
                     user_flags_no_stdlib.append(fl)
 
+            # It is much preferred to not go down into standard includes (built-in paths) so we can
+            # have a clean list of direct includes. However, GCC will fail on bracket-includes that
+            # cannot be resolved to a built-in path (only on some, it looks like it special-cases
+            # standard/gnu C headers, not C++ or other system headers). Fortunately, Clang tolerates
+            # it and seems to treat all includes uniformly (nice!).
+            if cc_toolchain.compiler == "clang":
+                user_flags_no_stdlib.append("--no-standard-includes")
+
             # Invoke the preprocessor (-E) to get includes (-MM) tolerating not finding include (-MG),
             # and without providing any include paths (--no-standard-includes). That should result
             # in a very shallow list of includes, and it seems to be the only reliable way to do it.
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags_no_stdlib + ["--no-standard-includes", "-MM", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
+                user_compile_flags = user_flags_no_stdlib + ["-M", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
                 source_file = f.path,
                 preprocessor_defines = depset(
                     transitive = [
@@ -736,6 +744,12 @@ def cc_meta_aspect_factory(
                 cfg = "exec",
                 doc = "Tool for checking target imports against deps exports.",
             ),
+            "_combine_direct_imports": attr.label(
+                default = Label("@bazel_cc_meta//cc_meta:combine_direct_imports"),
+                executable = True,
+                cfg = "exec",
+                doc = "Tool for combining classified direct imports.",
+            ),
             "_combine_includes_lists": attr.label(
                 default = Label("@bazel_cc_meta//cc_meta:combine_includes_lists"),
                 executable = True,
@@ -747,12 +761,6 @@ def cc_meta_aspect_factory(
                 executable = True,
                 cfg = "exec",
                 doc = "Tool for classifying imports in includes dumps.",
-            ),
-            "_combine_direct_imports": attr.label(
-                default = Label("@bazel_cc_meta//cc_meta:combine_direct_imports"),
-                executable = True,
-                cfg = "exec",
-                doc = "Tool for combining classified direct imports.",
             ),
             "_run_suppress_stdout": attr.label(
                 default = Label("@bazel_cc_meta//cc_meta:run_suppress_stdout"),

@@ -28,6 +28,7 @@ def main():
             ("source_file" not in in_data)
             or ("dep_imports" not in in_data)
             or ("sys_imports" not in in_data)
+            or ("ambiguous_imports" not in in_data)
         ):
             print(
                 "Missing entries in direct imports json file '{}'. Got {}. Aborting...".format(
@@ -44,6 +45,7 @@ def main():
                 "target": target_name,
                 "imports": in_data["dep_imports"],
                 "system_imports": in_data["sys_imports"],
+                "ambiguous_imports": in_data["ambiguous_imports"],
             }
         )
 

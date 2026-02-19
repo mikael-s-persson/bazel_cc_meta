@@ -148,8 +148,11 @@ def _gather_cc_meta(target_list: list, top_dir: str):
     target_to_sys_imports_dict = {}  # Target name to system_imports
     combined_exports_dict = {}  # Target name to exports
     combined_deps_issues_dict = {}  # Target name to deps issues
+    combined_ambiguous_imports = []
 
     targets_by_export = {}
+
+    verbose_output = ("--sandbox_debug" in sys.argv[1:]) or ("-s" in sys.argv[1:])
 
     for out_ln in target_build_process.stderr.splitlines():
         out_ln_str = out_ln.decode()
@@ -203,6 +206,12 @@ def _gather_cc_meta(target_list: list, top_dir: str):
                     if di["not_found"] or di["unused"]
                 }
             )
+            for di in target_deps_issues_list:
+                if "ambiguous" not in di:
+                    continue
+                combined_ambiguous_imports.extend(di["ambiguous"])
+        elif verbose_output:
+            print(out_ln_str, file=sys.stderr)
 
     for al in combined_all_imports_list:
         comp_src_file = al["source_file"]
@@ -234,14 +243,31 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         for imp_file in target_sys_imports:
             if imp_file in targets_by_export:
                 print(
-                    "WARNING: Target '{}' includes '{}', which is resolved to a built-in "
-                    "or system directory, but is also provided by targets '{}'! There is "
+                    "\033[33mWARNING:\033[0m Target '{}' includes '{}', which is resolved to a built-in "
+                    "or system directory, but is also provided by targets '{}'!\nThere is "
                     "probably a missing dependency. This must be fixed manually. "
                     "Transitive dependencies could affect compilation results.".format(
                         target_name, imp_file, targets_by_export[imp_file]
                     ),
                     file=sys.stderr,
                 )
+
+    if len(combined_ambiguous_imports) > 0:
+        print(
+            "\033[33mWARNING:\033[0m Some includes are ambiguously resolved to a built-in "
+            "or system directory, but are also provided by build targets!\nMissing "
+            "dependencies cannot be identified accurately. This is a consequence "
+            "of using GCC and having system installs (host/exec environment) of "
+            "the libraries (headers) involved in the build graph.\nPlease use Clang "
+            "and/or use a hermetic build environment (e.g., toolchain, sysroot, "
+            "docker, etc.). Here is a list of ambiguous includes:",
+            file=sys.stderr,
+        )
+    for imp_path in frozenset(combined_ambiguous_imports):
+        print(
+            "\033[33mWARNING:\033[0m Ambiguous include: '{}'".format(imp_path),
+            file=sys.stderr,
+        )
 
     print(
         "\r>>> Finished extracting cc-meta-info (got {} files indexed)".format(
@@ -291,7 +317,7 @@ def _get_workspace_exec_root(ws_root):
             return ws_rel_exec_root
         else:
             print(
-                "WARNING: Relative workspace execution root path '{}' does not exist! "
+                "\033[33mWARNING:\033[0m Relative workspace execution root path '{}' does not exist! "
                 "(Have you built the project at least once? Is this a remote or read-only workspace?) "
                 "Falling back to absolute path in Bazel's current cache, this could be less stable over time.".format(
                     ws_rel_exec_root
@@ -300,7 +326,7 @@ def _get_workspace_exec_root(ws_root):
             )
     else:
         print(
-            "ERROR: Getting workspace name from 'bazel info' failed!\n{}".format(
+            "\033[31mERROR:\033[0m Getting workspace name from 'bazel info' failed!\n{}".format(
                 info_ws_process.stderr
             ),
             file=sys.stderr,
@@ -318,7 +344,7 @@ def _get_workspace_exec_root(ws_root):
             return ws_abs_exec_root
         else:
             print(
-                "WARNING: Absolute workspace exec root '{}' does not exist! "
+                "\033[33mWARNING:\033[0m Absolute workspace exec root '{}' does not exist! "
                 "(Have you built the project at least once? Is this a remote build?) "
                 "Falling back to workspace root path, this could affect paths to external dependencies.".format(
                     ws_abs_exec_root
@@ -327,7 +353,7 @@ def _get_workspace_exec_root(ws_root):
             )
     else:
         print(
-            "ERROR: Getting execution_root path from 'bazel info' failed!\n{}".format(
+            "\033[31mERROR:\033[0m Getting execution_root path from 'bazel info' failed!\n{}".format(
                 info_er_process.stderr
             ),
             file=sys.stderr,

@@ -130,13 +130,42 @@ def main():
 
     dep_incl_list = []
     sys_incl_list = []
+    ambiguous_incl_list = []
     for dincl_path in dincl_incl_list:
-        dincl_dirs = []
-        for aincl_path in aincl_incl_list:
-            if aincl_path.match(str(dincl_path)):
-                dincl_dirs.append(PurePath(*aincl_path.parts[: -len(dincl_path.parts)]))
         found_in_dep = False
         found_in_sys = False
+        dincl_dirs = []
+        if dincl_path.is_absolute():
+            # We *should* never get absolute paths. But, GCC has an undocumented behavior that it does not
+            # treat system includes as includes that could be left unresolved (-MG), and when it resolves an
+            # include to a built-in directory (but not -isystem dirs), it will output that dependency (-M)
+            # as an absolute path under the built-in directory, even if the sysroot is provided as a relative
+            # path.
+            # TODO: Figure out the behavior when cross-compiling with GCC. I don't have such a setup.
+            for dincl_parent in dincl_path.parents:
+                if dincl_parent in incl_dirs_builtin or (
+                    dincl_parent.match("*-*-*")
+                    and dincl_parent.parent in incl_dirs_builtin
+                ):
+                    dincl_child = PurePath(*dincl_path.parts[len(dincl_parent.parts) :])
+                    for aincl_path in aincl_incl_list:
+                        if (
+                            aincl_path.match(str(dincl_child))
+                            and aincl_path != dincl_path
+                        ):
+                            # Same include from direct includes found in all includes but somewhere else.
+                            found_in_dep = True
+                            break
+                    dincl_path = dincl_child
+                    found_in_sys = True
+                    break
+        else:
+            for aincl_path in aincl_incl_list:
+                if aincl_path.match(str(dincl_path)):
+                    dincl_dirs.append(
+                        PurePath(*aincl_path.parts[: -len(dincl_path.parts)])
+                    )
+
         for dincl_dir in dincl_dirs:
             if (
                 (dincl_dir in incl_dirs_i)
@@ -144,16 +173,22 @@ def main():
                 or (dincl_dir in incl_dirs_isystem)
             ):
                 found_in_dep = True
+                break
             elif (
                 (dincl_dir in incl_dirs_builtin)
                 or (dincl_dir.match("*-*-*") and dincl_dir.parent in incl_dirs_builtin)
                 or (PurePath(dincl_src_file).parent == dincl_dir)
             ):
                 found_in_sys = True
+                break
 
         if found_in_dep or not found_in_sys:
-            # Found in explicit include paths (maybe also in built-in) or not at all.
-            dep_incl_list.append(str(dincl_path))
+            if found_in_sys:
+                # Found in built-in path and in dep paths, this could be a big problem.
+                ambiguous_incl_list.append(str(dincl_path))
+            else:
+                # Found in explicit include paths or not at all.
+                dep_incl_list.append(str(dincl_path))
         else:
             # Found only in built-in directories.
             sys_incl_list.append(str(dincl_path))
@@ -164,6 +199,7 @@ def main():
                 "source_file": dincl_src_file,
                 "dep_imports": dep_incl_list,
                 "sys_imports": sys_incl_list,
+                "ambiguous_imports": ambiguous_incl_list,
             },
             out_file,
             indent=2,
