@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import PurePath
 
@@ -22,6 +23,26 @@ def _includes_from_makefile(file_name):
         md_includes_list[1],
         [PurePath(os.path.normpath(p)) for p in md_includes_list[2:]],
     )
+
+
+def _strip_builtin_suffixes(p):
+    # We expect patterns like these:
+    #  some/path/c++/[0-9]*   (e.g., c++/8, for GCC/libstdc++)
+    #  some/path/c++/v[0-9]*   (e.g., c++/v1, for Clang/libc++)
+    # Maybe following one of these:
+    #  some/path/arch-distro-os-utils  (e.g., x86_64-unknown-linux-gnu)
+    #  some/path/arch-os-utils  (e.g., aarch64-linux-gnu)
+    p_parts = list(p.parts)
+    if (
+        len(p_parts) > 2
+        and p_parts[-2] == "c++"
+        and re.fullmatch("v?[0-9]+", p_parts[-1])
+    ):
+        p_parts.pop()
+        p_parts.pop()
+    if len(p_parts) > 1 and re.fullmatch("(\\w+-){2}(\\w+-)?\\w+", p_parts[-1]):
+        p_parts.pop()
+    return PurePath(*p_parts)
 
 
 def main():
@@ -143,9 +164,9 @@ def main():
             # path.
             # TODO: Figure out the behavior when cross-compiling with GCC. I don't have such a setup.
             for dincl_parent in dincl_path.parents:
-                if dincl_parent in incl_dirs_builtin or (
-                    dincl_parent.match("*-*-*")
-                    and dincl_parent.parent in incl_dirs_builtin
+                if (
+                    dincl_parent in incl_dirs_builtin
+                    or _strip_builtin_suffixes(dincl_parent) in incl_dirs_builtin
                 ):
                     dincl_child = PurePath(*dincl_path.parts[len(dincl_parent.parts) :])
                     for aincl_path in aincl_incl_list:
@@ -175,8 +196,8 @@ def main():
                 found_in_dep = True
                 break
             elif (
-                (dincl_dir in incl_dirs_builtin)
-                or (dincl_dir.match("*-*-*") and dincl_dir.parent in incl_dirs_builtin)
+                dincl_dir in incl_dirs_builtin
+                or _strip_builtin_suffixes(dincl_dir) in incl_dirs_builtin
                 or (PurePath(dincl_src_file).parent == dincl_dir)
             ):
                 found_in_sys = True
