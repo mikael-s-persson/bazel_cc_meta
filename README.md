@@ -387,6 +387,31 @@ probably "just works" unless you use modules or layering checks), **fix** or ski
 In order to discover includes, this tool attempts to parse all files in `hdrs` and `srcs`, which means
 that includes within `textual_hdrs` **are not discoverable**.
 
+## Using GCC
+
+Broadly-speaking, GCC and Clang are compatible, but there are differences that can matter in some cases.
+Since this tool (`bazel_cc_meta`) is mostly aimed at LLVM/Clang, such as producing a `compiler_commands.json`
+file to be consumed by `clangd` (LSP server), it is generally recommended to use Clang as the compiler.
+
+First, compilation flags may not be entirely the same between compilers, e.g., your build configuration
+might conditionally add flags only for Clang, or Bazel's C/C++ rules might also do that (I know it does,
+but not in ways that matters for `clangd`, afaik). In general, it is safer to use Clang at least when
+generating the `compiler_commands.json` (i.e., when invoking the refresh script).
+
+Second, GCC has particular idiosyncracies when it comes to extracting the dependencies (aka includes)
+while running the preprocessor-only pass, which this tool relies on to match imports to exports.
+The result is that identification of direct includes using GCC is less reliable, especially in the
+face of libraries (headers) being installed on the host/exec environment. In a nutshell, Clang allows
+for all include paths to be removed and successfully produce a list of direct unresolved includes.
+With GCC, this is not possible: removing all include paths causes unresolved includes of standard
+headers to trigger preprocessing errors (even if it is instructed not to fail because of that).
+So, we are forced to keep built-in include paths (e.g., `/usr/include`) and assume that any included
+file that GCC finds in those directories were meant to come from the system and not a Bazel
+target dependency. Of course, that assumption may be wrong, as in the case where the same library
+exists in both places (e.g., your Bazel project uses `@abseil-cpp`, but you also have `libabsl-dev`
+installed on your system).
+
+For those reasons, please use Clang, at least when running the refresh script.
 
 # Disclaimer
 
