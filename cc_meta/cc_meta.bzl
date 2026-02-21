@@ -249,16 +249,17 @@ def _cc_meta_aspect_impl(target, ctx):
                     public_header_paths.append(potential_header_path)
         if hasattr(ctx.rule.attr, "strip_include_prefix") and not direct_hdr_path_is_virtual:
             hacky_suffixes.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
-        for ext_incl in target[CcInfo].compilation_context.external_includes.to_list() + target[CcInfo].compilation_context.quote_includes.to_list():
+        for ext_incl in (target[CcInfo].compilation_context.includes.to_list() +
+                         target[CcInfo].compilation_context.quote_includes.to_list() +
+                         target[CcInfo].compilation_context.external_includes.to_list() +
+                         target[CcInfo].compilation_context.system_includes.to_list()):
             if paths.normalize(ext_incl) != "." and not paths.starts_with(direct_hdr.path, ext_incl):
                 continue
-            potential_stems = []
+            potential_stems = [ext_incl]
             for hacky_suffix in hacky_suffixes:
                 potential_stems.append(paths.join(ext_incl, hacky_suffix))
             if direct_hdr_path_is_virtual:
                 potential_stems.append(paths.join(ext_incl, target.label.package, "_virtual_includes", target.label.name))
-            else:
-                potential_stems.append(ext_incl)
             for potential_stem in potential_stems:
                 if paths.normalize(potential_stem) == "." or paths.starts_with(direct_hdr.path, potential_stem):
                     potential_header_path = paths.relativize(direct_hdr.path, potential_stem)
@@ -352,10 +353,26 @@ def _cc_meta_aspect_impl(target, ctx):
             unsupported_features = ["module_maps"] + ctx.disabled_features,
         )
 
+    # Create a json with the different lists of include directories.
+    incl_dir_lists_file = None
+    if buildable_files:
+        incl_dir_lists = {
+            "builtin_dirs": cc_toolchain.built_in_include_directories,
+            "include_dirs": target[CcInfo].compilation_context.includes.to_list(),
+            "iquote_dirs": target[CcInfo].compilation_context.quote_includes.to_list(),
+            "isystem_dirs": depset([], transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes]).to_list(),
+        }
+        incl_dir_lists_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json")
+        ctx.actions.write(
+            output = incl_dir_lists_file,
+            content = json.encode_indent(incl_dir_lists, indent = "  "),
+        )
+
     # Assemble direct include lists and compile commands for each compilable file.
 
     incl_files = []
     all_incl_files = []
+    dep_sys_imports_files = []
     comp_cmd_list = []
     for f in buildable_files:
         # The following bit emulates Bazel's logic to recognize the language of "cc" sources and headers.
@@ -432,16 +449,29 @@ def _cc_meta_aspect_impl(target, ctx):
             incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 
-            # Invoke the preprocessor (why does Bazel make this so convoluted?)
+            # Remove stdlib flag, just to avoid warning when compiling/pre-processing without standard
+            # include directories.
+            user_flags_no_stdlib = []
+            for fl in user_flags:
+                if not fl.startswith("-stdlib"):
+                    user_flags_no_stdlib.append(fl)
+
+            # It is much preferred to not go down into standard includes (built-in paths) so we can
+            # have a clean list of direct includes. However, GCC will fail on bracket-includes that
+            # cannot be resolved to a built-in path (only on some, it looks like it special-cases
+            # standard/gnu C headers, not C++ or other system headers). Fortunately, Clang tolerates
+            # it and seems to treat all includes uniformly (nice!).
+            if cc_toolchain.compiler == "clang":
+                user_flags_no_stdlib.append("--no-standard-includes")
+
+            # Invoke the preprocessor (-E) to get includes (-MM) tolerating not finding include (-MG),
+            # and without providing any include paths (--no-standard-includes). That should result
+            # in a very shallow list of includes, and it seems to be the only reliable way to do it.
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags + ["-MM", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
+                user_compile_flags = user_flags_no_stdlib + ["-M", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
                 source_file = f.path,
-                # A successful compilation would require all include paths, but:
-                #  '-E' means we only preprocess.
-                #  '-MG' means we don't care if we can't find headers.
-                # The result is that we get a list of all includes, as they are, with preprocessed directives.
                 preprocessor_defines = depset(
                     transitive = [
                         target[CcInfo].compilation_context.defines,
@@ -459,15 +489,15 @@ def _cc_meta_aspect_impl(target, ctx):
                 action_name = action_name,
                 variables = cc_incl_compile_variables,
             )
+            get_dir_incl_args = ctx.actions.args()
+            get_dir_incl_args.add(cc_compiler_path)
+            get_dir_incl_args.add_all(cc_incl_command_line)
             ctx.actions.run(
                 mnemonic = "CcGetDirectIncludes",
                 executable = ctx.executable._run_suppress_stdout,
-                arguments = [cc_compiler_path] + cc_incl_command_line,
+                arguments = [get_dir_incl_args],
                 env = cc_incl_env,
-                inputs = depset(
-                    [f] + target[CcInfo].compilation_context.headers.to_list(),
-                    transitive = [cc_toolchain.all_files],
-                ),
+                inputs = depset([f], transitive = [cc_toolchain.all_files]),
                 outputs = [incl_file],
             )
 
@@ -479,7 +509,8 @@ def _cc_meta_aspect_impl(target, ctx):
             all_incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_all_includes_for_" + target.label.name)
             all_incl_files.append(all_incl_file)
 
-            # Invoke the preprocessor (why does Bazel make this so convoluted?)
+            # Invoke the preprocessor (-E) to get includes (-M), and with all include paths,
+            # we expect a huge recursive list of everything that comes into the build.
             cc_all_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
@@ -508,16 +539,38 @@ def _cc_meta_aspect_impl(target, ctx):
                 action_name = action_name,
                 variables = cc_all_incl_compile_variables,
             )
+            get_all_incl_args = ctx.actions.args()
+            get_all_incl_args.add(cc_compiler_path)
+            get_all_incl_args.add_all(cc_all_incl_command_line)
             ctx.actions.run(
                 mnemonic = "CcGetAllIncludes",
                 executable = ctx.executable._run_suppress_stdout,
-                arguments = [cc_compiler_path] + cc_all_incl_command_line,
+                arguments = [get_all_incl_args],
                 env = cc_all_incl_env,
                 inputs = depset(
-                    [f] + target[CcInfo].compilation_context.headers.to_list(),
-                    transitive = [cc_toolchain.all_files],
+                    [f],
+                    transitive = [cc_toolchain.all_files, target[CcInfo].compilation_context.headers],
                 ),
                 outputs = [all_incl_file],
+            )
+
+            # Finally, use the artifacts we have obtained, i.e., all include paths,
+            # direct includes, and all resolved includes to sort out what we include
+            # that should/does come from a dep versus the system (built-in / sysroot).
+            dep_sys_imports_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_dep_sys_imports_for_" + target.label.name)
+            dep_sys_imports_files.append(dep_sys_imports_file)
+
+            classify_imps_args = ctx.actions.args()
+            classify_imps_args.add(incl_dir_lists_file)
+            classify_imps_args.add(incl_file)
+            classify_imps_args.add(all_incl_file)
+            classify_imps_args.add(dep_sys_imports_file)
+            ctx.actions.run(
+                mnemonic = "CcClassifyIncludes",
+                executable = ctx.executable._identify_direct_includes,
+                arguments = [classify_imps_args],
+                inputs = depset([incl_dir_lists_file] + [incl_file] + [all_incl_file]),
+                outputs = [dep_sys_imports_file],
             )
 
         # Check if any built-in compiler path is relative, as a proxy for a cross-compilation or hermetic
@@ -561,17 +614,28 @@ def _cc_meta_aspect_impl(target, ctx):
             "file": f.path,
         })
 
-    # This action reads the Makefile outputs with includes for each source file into one json output file.
+    # This action combines the imports for each source file into one set of imports.
+    comb_dir_imports_args = ctx.actions.args()
+    comb_dir_imports_args.add_all(dep_sys_imports_files)
+    comb_dir_imports_args.add(comb_incl_file)
+    comb_dir_imports_args.add(target_qualified_name)
     ctx.actions.run(
-        executable = ctx.executable._combine_includes_lists,
-        arguments = [f.path for f in incl_files] + [comb_incl_file.path] + [target_qualified_name],
-        inputs = depset(incl_files),
+        mnemonic = "CcCombineDirectImports",
+        executable = ctx.executable._combine_direct_imports,
+        arguments = [comb_dir_imports_args],
+        inputs = depset(dep_sys_imports_files),
         outputs = [comb_incl_file],
     )
 
+    # This action reads the Makefile outputs with includes listed for each source file into one set of imports.
+    comb_incl_lists_args = ctx.actions.args()
+    comb_incl_lists_args.add_all(all_incl_files)
+    comb_incl_lists_args.add(comb_all_incl_file)
+    comb_incl_lists_args.add(target_qualified_name)
     ctx.actions.run(
+        mnemonic = "CcCombineIncludesLists",
         executable = ctx.executable._combine_includes_lists,
-        arguments = [f.path for f in all_incl_files] + [comb_all_incl_file.path] + [target_qualified_name],
+        arguments = [comb_incl_lists_args],
         inputs = depset(all_incl_files),
         outputs = [comb_all_incl_file],
     )
@@ -602,9 +666,14 @@ def _cc_meta_aspect_impl(target, ctx):
         # If this target forwards its exports it will find itself for all its includes,
         # so that will make all its deps appear unused, so we just remove them.
         # We should still detect 'not_found' includes, so we still need to run the checker.
+        check_dir_exports_args = ctx.actions.args()
+        check_dir_exports_args.add(pub_hdrs_file)
+        check_dir_exports_args.add(comb_incl_file)
+        check_dir_exports_args.add(deps_issues_file)
         ctx.actions.run(
+            mnemonic = "CcCheckDirectDepsExports",
             executable = ctx.executable._check_direct_deps_exports,
-            arguments = [pub_hdrs_file.path] + [comb_incl_file.path] + [deps_issues_file.path],
+            arguments = [check_dir_exports_args],
             inputs = depset([pub_hdrs_file] + [comb_incl_file]),
             outputs = [deps_issues_file],
         )
@@ -618,9 +687,15 @@ def _cc_meta_aspect_impl(target, ctx):
             deps_direct_exports.append(dep[CcMetaInfo].direct_exports_json)
 
         # Check includes against exports from target itself and its direct dependencies.
+        check_dir_exports_args = ctx.actions.args()
+        check_dir_exports_args.add_all(deps_direct_exports)
+        check_dir_exports_args.add(pub_hdrs_file)
+        check_dir_exports_args.add(comb_incl_file)
+        check_dir_exports_args.add(deps_issues_file)
         ctx.actions.run(
+            mnemonic = "CcCheckDirectDepsExports",
             executable = ctx.executable._check_direct_deps_exports,
-            arguments = [f.path for f in deps_direct_exports] + [pub_hdrs_file.path] + [comb_incl_file.path] + [deps_issues_file.path],
+            arguments = [check_dir_exports_args],
             inputs = depset(deps_direct_exports + [pub_hdrs_file] + [comb_incl_file]),
             outputs = [deps_issues_file],
         )
@@ -669,11 +744,23 @@ def cc_meta_aspect_factory(
                 cfg = "exec",
                 doc = "Tool for checking target imports against deps exports.",
             ),
+            "_combine_direct_imports": attr.label(
+                default = Label("@bazel_cc_meta//cc_meta:combine_direct_imports"),
+                executable = True,
+                cfg = "exec",
+                doc = "Tool for combining classified direct imports.",
+            ),
             "_combine_includes_lists": attr.label(
                 default = Label("@bazel_cc_meta//cc_meta:combine_includes_lists"),
                 executable = True,
                 cfg = "exec",
                 doc = "Tool for combining includes dumps.",
+            ),
+            "_identify_direct_includes": attr.label(
+                default = Label("@bazel_cc_meta//cc_meta:identify_direct_includes"),
+                executable = True,
+                cfg = "exec",
+                doc = "Tool for classifying imports in includes dumps.",
             ),
             "_run_suppress_stdout": attr.label(
                 default = Label("@bazel_cc_meta//cc_meta:run_suppress_stdout"),

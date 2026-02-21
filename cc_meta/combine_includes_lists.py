@@ -14,7 +14,7 @@ def make_includes_list(file_name):
     return md_includes_list[1], md_includes_list[2:]
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="CombineIncludesLists",
         description="Combine the include lists for several includes dumps (-MF).",
@@ -45,3 +45,7 @@ if __name__ == "__main__":
             out_file,
             indent=2,
         )
+
+
+if __name__ == "__main__":
+    main()

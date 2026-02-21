@@ -1,0 +1,4 @@
+
+# Common flags for Clang
+build:clang --repo_env=CC=clang --repo_env=CXX=clang++
+build:clang --linkopt=-fuse-ld=lld
