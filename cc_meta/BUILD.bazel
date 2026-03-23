@@ -34,6 +34,18 @@ py_binary(
 )
 
 py_binary(
+    name = "identify_direct_includes",
+    srcs = ["identify_direct_includes.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "combine_direct_imports",
+    srcs = ["combine_direct_imports.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
     name = "check_direct_deps_exports",
     srcs = ["check_direct_deps_exports.py"],
     visibility = ["//visibility:public"],

@@ -57,7 +57,7 @@ def _ensure_cwd_is_workspace_root():
     os.chdir(workspace_root)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="FixDependencies",
         description="Fix dependency issues with Bazel targets.",
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             rut = _resolve_target_name(ut)
             buildozer_rm.append(rut)
         if buildozer_rm:
-            buildozer_process = subprocess.run(
+            subprocess.run(
                 [
                     args.buildozer,
                     "-k",
@@ -147,7 +147,7 @@ if __name__ == "__main__":
             except ValueError:
                 buildozer_add.append(new_target)
         if buildozer_add:
-            buildozer_process = subprocess.run(
+            subprocess.run(
                 [
                     args.buildozer,
                     "-k",
@@ -156,3 +156,7 @@ if __name__ == "__main__":
                     resolved_target,
                 ]
             )
+
+
+if __name__ == "__main__":
+    main()
