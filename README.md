@@ -13,19 +13,21 @@ the C/C++ targets and their dependencies. Core capabilities include:
 
 # Getting started
 
-## Get a release
-
-Choose a release from the [release page](https://github.com/mikael-s-persson/bazel_cc_meta/releases) and follow the instructions.
-
-## Get a specific commit
-
-### MODULE.bazel (recommended)
+## MODULE.bazel (recommended)
 
 Importing into a Bazel module is done as usual. Some examples are given below.
 
-#### Release version as `http_archive`
+### Release version from Bazel Central Registry (recommended)
 
-Put the following into your MODULE.bazel file (filling in version numbers and SHA)
+Put the following into your MODULE.bazel file (with `X.Y.Z` being the latest version on the [registry](https://registry.bazel.build/)):
+
+```python
+bazel_dep(name = "bazel_cc_meta", version = "X.Y.Z")
+```
+
+### Release version as `http_archive`
+
+Put the following into your MODULE.bazel file (filling in version numbers and SHA, see [releases page](https://github.com/mikael-s-persson/bazel_cc_meta/releases))
 
 ```python
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -44,7 +46,7 @@ http_archive(
 )
 ```
 
-#### Git commit as `git_override`
+### Git commit as `git_override`
 
 Put the following into your MODULE.bazel file
 
@@ -52,20 +54,6 @@ Put the following into your MODULE.bazel file
 bazel_dep(name = "bazel_cc_meta", version = "0.0.0")
 git_override(
     module_name = "bazel_cc_meta",
-    commit = <commit_you_are_interested_in>,
-    remote = "https://github.com/mikael-s-persson/bazel_cc_meta",
-)
-```
-
-### WORKSPACE (legacy) (untested)
-
-Put the following into your WORKSPACE file to use a specific commit
-
-```python
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-
-git_repository(
-    name = "bazel_cc_meta",
     commit = <commit_you_are_interested_in>,
     remote = "https://github.com/mikael-s-persson/bazel_cc_meta",
 )
