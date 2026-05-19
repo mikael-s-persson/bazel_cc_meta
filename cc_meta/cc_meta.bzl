@@ -356,11 +356,18 @@ def _cc_meta_aspect_impl(target, ctx):
     # Create a json with the different lists of include directories.
     incl_dir_lists_file = None
     if buildable_files:
+        strip_dirs = []
+        if hasattr(ctx.rule.attr, "strip_include_prefix"):
+            if ctx.rule.attr.strip_include_prefix.startswith("/"):
+                strip_dirs.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
+            else:
+                strip_dirs.append(paths.join(target.label.package, ctx.rule.attr.strip_include_prefix.lstrip("/")))
         incl_dir_lists = {
             "builtin_dirs": cc_toolchain.built_in_include_directories,
             "include_dirs": target[CcInfo].compilation_context.includes.to_list(),
             "iquote_dirs": target[CcInfo].compilation_context.quote_includes.to_list(),
             "isystem_dirs": depset([], transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes]).to_list(),
+            "strip_dirs": strip_dirs,
         }
         incl_dir_lists_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json")
         ctx.actions.write(
@@ -445,7 +452,10 @@ def _cc_meta_aspect_impl(target, ctx):
 
             # Create a temporary file as 'source.cc.cc_meta_include_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
+            if paths.starts_with(f.short_path, target.label.package):
+                f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
+            else:
+                f_pkg_rel_path = paths.join(target.label.package, str(abs(hash(f.dirname))), f.basename)
             incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 

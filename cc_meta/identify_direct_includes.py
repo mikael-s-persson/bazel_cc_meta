@@ -87,6 +87,9 @@ def main():
     incl_dirs_builtin = frozenset(
         [PurePath(os.path.normpath(p)) for p in incl_dirs["builtin_dirs"]]
     )
+    incl_dirs_strip = frozenset(
+        [PurePath(os.path.normpath(p)) for p in incl_dirs["strip_dirs"]]
+    )
 
     dincl_obj_file, dincl_src_file, dincl_incl_list = _includes_from_makefile(
         args.direct_incl_makefile
@@ -192,13 +195,14 @@ def main():
                 (dincl_dir in incl_dirs_i)
                 or (dincl_dir in incl_dirs_iquote)
                 or (dincl_dir in incl_dirs_isystem)
+                or (dincl_dir in incl_dirs_strip)
+                or (PurePath(dincl_src_file).parent == dincl_dir)
             ):
                 found_in_dep = True
                 break
             elif (
                 dincl_dir in incl_dirs_builtin
                 or _strip_builtin_suffixes(dincl_dir) in incl_dirs_builtin
-                or (PurePath(dincl_src_file).parent == dincl_dir)
             ):
                 found_in_sys = True
                 break
@@ -208,7 +212,7 @@ def main():
                 # Found in built-in path and in dep paths, this could be a big problem.
                 ambiguous_incl_list.append(str(dincl_path))
             else:
-                # Found in explicit include paths or not at all.
+                # Found in explicit include paths, self-inclusion or not at all.
                 dep_incl_list.append(str(dincl_path))
         else:
             # Found only in built-in directories.
