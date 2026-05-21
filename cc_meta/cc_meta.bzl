@@ -455,7 +455,7 @@ def _cc_meta_aspect_impl(target, ctx):
             if paths.starts_with(f.short_path, target.label.package):
                 f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
             else:
-                f_pkg_rel_path = paths.join(target.label.package, str(abs(hash(f.dirname))), f.basename)
+                f_pkg_rel_path = paths.join(target.label.package, "%x" % abs(hash(f.dirname)), f.basename)
             incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 
