@@ -128,8 +128,8 @@ _C_SOURCE = ["c"]
 _OBJC_SOURCE = ["m"]
 _OBJCPP_SOURCE = ["mm", "M"]
 _CC_HEADER = ["h", "hh", "hpp", "ipp", "hxx", "h++", "inc", "inl", "tlh", "tli", "H", "tcc"]
-_ASSEMBLER_WITH_C_PREPROCESSOR = [".S"]
-_ASSEMBLER = [".s", ".asm"]
+_ASSEMBLER_WITH_C_PREPROCESSOR = ["S"]
+_ASSEMBLER = ["s", "asm"]
 
 def _lang_spec_to_action(opt):
     result = None
@@ -398,12 +398,13 @@ def _cc_meta_aspect_impl(target, ctx):
         user_flags = ctx.fragments.cpp.copts
         rule_flags = []
         rule_flags += ctx.rule.attr.copts
-        if f.extension in _C_SOURCE:
+        if (f.extension in _C_SOURCE) or (f.extension in _ASSEMBLER) or (f.extension in _ASSEMBLER_WITH_C_PREPROCESSOR):
             user_flags += ctx.fragments.cpp.conlyopts
             rule_flags += ctx.rule.attr.conlyopts
-        if (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
+        elif (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
             user_flags += ctx.fragments.cpp.cxxopts
             rule_flags += ctx.rule.attr.cxxopts
+
         if is_target_objc:
             user_flags += ctx.fragments.cpp.objccopts
         if f.extension in _OBJC_SOURCE:
@@ -446,7 +447,7 @@ def _cc_meta_aspect_impl(target, ctx):
             action_name = action_name,
         )
 
-        if not _is_external(ctx):
+        if (not _is_external(ctx)) and (f.extension not in _ASSEMBLER):
             # Generate a shallow list of includes, without system includes, which will later be
             # checked against the exports of direct dependencies.
 
