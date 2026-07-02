@@ -119,6 +119,47 @@ def _match_lists(a_list, b_list):
 # List of single arguments (e.g., '-foo', not '-foo foo_value') to take out of compile_commands arguments.
 _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS = ["-fno-canonical-system-headers"]
 
+_FILTER_OUT_SINGLE_ARGS_FROM_INCL_COMPILE_CLANG = ["-nostdinc++", "-nostdinc", "-nostdlibinc", "-nobuiltininc", "-ibuiltininc"]
+_FILTER_OUT_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG = ["-idirafter", "--include-directory-after", "-isystem", "-isystem-after", "-cxx-isystem", "-stdlib++-isystem"]
+_IMACROS_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG = ["--imacros", "-imacros"]
+
+def _filter_args_for_incl_compile_clang(cli_args):
+    filtered_args = []
+    macros_files = []
+    rm_next = False
+    macro_next = False
+    for arg in cli_args:
+        if rm_next:
+            rm_next = False
+            continue
+        if macro_next:
+            filtered_args.append(arg)
+            macros_files.append(arg)
+            macro_next = False
+            continue
+        if arg in _FILTER_OUT_SINGLE_ARGS_FROM_INCL_COMPILE_CLANG:
+            continue
+        dbl_arg_found = False
+        for cl_arg in _FILTER_OUT_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG:
+            if arg.startswith(cl_arg):
+                dbl_arg_found = True
+                if len(arg) == len(cl_arg):
+                    rm_next = True
+                break
+        if not dbl_arg_found:
+            filtered_args.append(arg)
+        for cl_arg in _IMACROS_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG:
+            if arg.startswith(cl_arg):
+                dir_arg = arg.removeprefix(cl_arg)
+                if not dir_arg:
+                    macro_next = True
+                    break
+                if dir_arg.startswith("="):
+                    dir_arg = dir_arg.removeprefix("=")
+                macros_files.append(dir_arg)
+
+    return filtered_args, macros_files
+
 # See Bazel's cc_helper.bzl source which lists file extensions used to infer the language used.
 # The main differences compared to inferred language by GCC or Clang are:
 #  - Bazel treats all headers (.h) as C++ headers (C headers must be C++-compatible)
@@ -128,8 +169,8 @@ _C_SOURCE = ["c"]
 _OBJC_SOURCE = ["m"]
 _OBJCPP_SOURCE = ["mm", "M"]
 _CC_HEADER = ["h", "hh", "hpp", "ipp", "hxx", "h++", "inc", "inl", "tlh", "tli", "H", "tcc"]
-_ASSEMBLER_WITH_C_PREPROCESSOR = [".S"]
-_ASSEMBLER = [".s", ".asm"]
+_ASSEMBLER_WITH_C_PREPROCESSOR = ["S"]
+_ASSEMBLER = ["s", "asm"]
 
 def _lang_spec_to_action(opt):
     result = None
@@ -356,11 +397,18 @@ def _cc_meta_aspect_impl(target, ctx):
     # Create a json with the different lists of include directories.
     incl_dir_lists_file = None
     if buildable_files:
+        strip_dirs = []
+        if hasattr(ctx.rule.attr, "strip_include_prefix"):
+            if ctx.rule.attr.strip_include_prefix.startswith("/"):
+                strip_dirs.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
+            else:
+                strip_dirs.append(paths.join(target.label.package, ctx.rule.attr.strip_include_prefix.lstrip("/")))
         incl_dir_lists = {
             "builtin_dirs": cc_toolchain.built_in_include_directories,
             "include_dirs": target[CcInfo].compilation_context.includes.to_list(),
             "iquote_dirs": target[CcInfo].compilation_context.quote_includes.to_list(),
             "isystem_dirs": depset([], transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes]).to_list(),
+            "strip_dirs": strip_dirs,
         }
         incl_dir_lists_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json")
         ctx.actions.write(
@@ -391,12 +439,13 @@ def _cc_meta_aspect_impl(target, ctx):
         user_flags = ctx.fragments.cpp.copts
         rule_flags = []
         rule_flags += ctx.rule.attr.copts
-        if f.extension in _C_SOURCE:
+        if (f.extension in _C_SOURCE) or (f.extension in _ASSEMBLER) or (f.extension in _ASSEMBLER_WITH_C_PREPROCESSOR):
             user_flags += ctx.fragments.cpp.conlyopts
             rule_flags += ctx.rule.attr.conlyopts
-        if (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
+        elif (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
             user_flags += ctx.fragments.cpp.cxxopts
             rule_flags += ctx.rule.attr.cxxopts
+
         if is_target_objc:
             user_flags += ctx.fragments.cpp.objccopts
         if f.extension in _OBJC_SOURCE:
@@ -439,13 +488,16 @@ def _cc_meta_aspect_impl(target, ctx):
             action_name = action_name,
         )
 
-        if not _is_external(ctx):
+        if (not _is_external(ctx)) and (f.extension not in _ASSEMBLER):
             # Generate a shallow list of includes, without system includes, which will later be
             # checked against the exports of direct dependencies.
 
             # Create a temporary file as 'source.cc.cc_meta_include_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
+            if paths.starts_with(f.short_path, target.label.package):
+                f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
+            else:
+                f_pkg_rel_path = paths.join(target.label.package, "%x" % abs(hash(f.dirname)), f.basename)
             incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
             incl_files.append(incl_file)
 
@@ -484,6 +536,15 @@ def _cc_meta_aspect_impl(target, ctx):
                 action_name = action_name,
                 variables = cc_incl_compile_variables,
             )
+            cc_incl_macros_files = []
+            if cc_toolchain.compiler == "clang":
+                # In some setups (e.g., toolchains_llvm), the built-in include paths are passed
+                # explicitly via a combination of "-nostdinc++", "-nostdinc", "-idirafter", "-cxx-isystem"
+                # and "-isystem". We need to strip all that out. We must do it here, because those
+                # are probably baked into the toolchain implementation.
+                cc_incl_command_line, cc_incl_macros_files = _filter_args_for_incl_compile_clang(cc_incl_command_line)
+            else:
+                _, cc_incl_macros_files = _filter_args_for_incl_compile_clang(cc_incl_command_line)
             cc_incl_env = cc_common.get_environment_variables(
                 feature_configuration = feature_configuration,
                 action_name = action_name,
@@ -499,6 +560,12 @@ def _cc_meta_aspect_impl(target, ctx):
                 env = cc_incl_env,
                 inputs = depset([f], transitive = [cc_toolchain.all_files]),
                 outputs = [incl_file],
+            )
+
+            incl_macros_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_macros_for_" + target.label.name + ".json")
+            ctx.actions.write(
+                output = incl_macros_file,
+                content = json.encode_indent(cc_incl_macros_files, indent = "  "),
             )
 
             # Generate a deep list of includes, with system includes, so that we can produce some
@@ -557,11 +624,12 @@ def _cc_meta_aspect_impl(target, ctx):
             # Finally, use the artifacts we have obtained, i.e., all include paths,
             # direct includes, and all resolved includes to sort out what we include
             # that should/does come from a dep versus the system (built-in / sysroot).
-            dep_sys_imports_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_dep_sys_imports_for_" + target.label.name)
+            dep_sys_imports_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_dep_sys_imports_for_" + target.label.name + ".json")
             dep_sys_imports_files.append(dep_sys_imports_file)
 
             classify_imps_args = ctx.actions.args()
             classify_imps_args.add(incl_dir_lists_file)
+            classify_imps_args.add(incl_macros_file)
             classify_imps_args.add(incl_file)
             classify_imps_args.add(all_incl_file)
             classify_imps_args.add(dep_sys_imports_file)
@@ -569,7 +637,7 @@ def _cc_meta_aspect_impl(target, ctx):
                 mnemonic = "CcClassifyIncludes",
                 executable = ctx.executable._identify_direct_includes,
                 arguments = [classify_imps_args],
-                inputs = depset([incl_dir_lists_file] + [incl_file] + [all_incl_file]),
+                inputs = depset([incl_dir_lists_file, incl_macros_file, incl_file, all_incl_file]),
                 outputs = [dep_sys_imports_file],
             )
 
