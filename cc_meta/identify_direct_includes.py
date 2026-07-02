@@ -52,6 +52,7 @@ def main():
         "a dump of all direct includes, and a dump of all includes.",
     )
     parser.add_argument("incl_dirs_file")
+    parser.add_argument("incl_macros_files")
     parser.add_argument("direct_incl_makefile")
     parser.add_argument("all_incl_makefile")
     parser.add_argument("output_file")
@@ -60,6 +61,10 @@ def main():
     incl_dirs = {}
     with open(args.incl_dirs_file, "r") as f:
         incl_dirs = json.load(f)
+
+    incl_macros = []
+    with open(args.incl_macros_files, "r") as f:
+        incl_macros = frozenset([PurePath(os.path.normpath(p)) for p in json.load(f)])
 
     if (
         ("include_dirs" not in incl_dirs)
@@ -156,6 +161,10 @@ def main():
     sys_incl_list = []
     ambiguous_incl_list = []
     for dincl_path in dincl_incl_list:
+        # We can't really classify files explicitly passed in as -imacros option,
+        # but they show up on the list of imports. Just ignore them.
+        if dincl_path in incl_macros:
+            continue
         found_in_dep = False
         found_in_sys = False
         dincl_dirs = []
