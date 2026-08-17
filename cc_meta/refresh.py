@@ -105,7 +105,32 @@ def _should_update_comp_cmd(prior_cmd: dict, new_cmd: dict):
     return len(new_cmd["arguments"]) > len(prior_cmd["arguments"])
 
 
-def _gather_cc_meta(target_list: list, top_dir: str):
+def _fix_sandboxed_path(p: str, rel_execroot, rel_output_base):
+    if p.startswith("bazel-out"):
+        return str(rel_execroot / p) if rel_execroot else p
+    if p.startswith("external"):
+        return str(rel_output_base / p) if rel_output_base else p
+    return p
+
+
+def _prefix_include_paths(arguments: list, rel_execroot, rel_output_base):
+    def fix_path(p):
+        return _fix_sandboxed_path(p, rel_execroot, rel_output_base)
+
+    for i, arg in enumerate(arguments):
+        if arg.startswith("-I") or arg.startswith("-B"):
+            optprefix = arg[0:2]
+            arguments[i] = optprefix + fix_path(arg[2:])
+            continue
+        if arg.startswith("--sysroot="):
+            arguments[i] = "--sysroot=" + fix_path(arg.removeprefix("--sysroot="))
+            continue
+        if arg.startswith("external") or arg.startswith("bazel-out"):
+            arguments[i] = fix_path(arguments[i])
+    return arguments
+
+
+def _gather_cc_meta(target_list: list, top_dir: str, rel_execroot, rel_output_base):
     print(">>> Analyzing cc-meta-info...")
 
     common_flags = [
@@ -163,8 +188,12 @@ def _gather_cc_meta(target_list: list, top_dir: str):
                 compile_commands_by_file.update(
                     {
                         tcmd_file: {
-                            "arguments": tcmd["arguments"],
-                            "file": tcmd_file,
+                            "arguments": _prefix_include_paths(
+                                tcmd["arguments"], rel_execroot, rel_output_base
+                            ),
+                            "file": _fix_sandboxed_path(
+                                tcmd_file, rel_execroot, rel_output_base
+                            ),
                             "compile_file": tcmd_file,
                             "directory": top_dir,
                         }
@@ -223,7 +252,7 @@ def _gather_cc_meta(target_list: list, top_dir: str):
         for imp_file in al["imports"]:
             new_cmd = {
                 "arguments": comp_cmd["arguments"],
-                "file": imp_file,
+                "file": _fix_sandboxed_path(imp_file, rel_execroot, rel_output_base),
                 "compile_file": comp_cmd["compile_file"],
                 "directory": top_dir,
             }
@@ -310,15 +339,15 @@ def _get_workspace_exec_root(ws_root):
 
     if info_ws_process.returncode == 0 and info_ws_process.stdout:
         ws_name = pathlib.Path(info_ws_process.stdout.decode().strip()).name
-        ws_rel_exec_root = ws_root / ("bazel-" + ws_name)
-        if ws_rel_exec_root.exists():
-            return ws_rel_exec_root
+        ws_rel_execroot = ws_root / ("bazel-" + ws_name)
+        if ws_rel_execroot.exists():
+            return ws_rel_execroot
         else:
             print(
                 "\033[33mWARNING:\033[0m Relative workspace execution root path '{}' does not exist! "
                 "(Have you built the project at least once? Is this a remote or read-only workspace?) "
                 "Falling back to absolute path in Bazel's current cache, this could be less stable over time.".format(
-                    ws_rel_exec_root
+                    ws_rel_execroot
                 ),
                 file=sys.stderr,
             )
@@ -337,15 +366,15 @@ def _get_workspace_exec_root(ws_root):
     )
 
     if info_er_process.returncode == 0 and info_er_process.stdout:
-        ws_abs_exec_root = pathlib.Path(info_er_process.stdout.decode().strip())
-        if ws_abs_exec_root.exists():
-            return ws_abs_exec_root
+        ws_abs_execroot = pathlib.Path(info_er_process.stdout.decode().strip())
+        if ws_abs_execroot.exists():
+            return ws_abs_execroot
         else:
             print(
                 "\033[33mWARNING:\033[0m Absolute workspace exec root '{}' does not exist! "
                 "(Have you built the project at least once? Is this a remote build?) "
                 "Falling back to workspace root path, this could affect paths to external dependencies.".format(
-                    ws_abs_exec_root
+                    ws_abs_execroot
                 ),
                 file=sys.stderr,
             )
@@ -357,13 +386,69 @@ def _get_workspace_exec_root(ws_root):
             file=sys.stderr,
         )
 
-    return ws_root
+    return None
+
+
+def _get_workspace_output_base(ws_root, ws_rel_execroot):
+
+    # We are looking for the output-base.
+    # See https://bazel.build/remote/output-directories
+
+    # First, attempt to create it relative to execroot.
+    # Go up since (execroot) == (output-base)/execroot/_main
+    # We avoid asking bazel for it, so we can keep it relative to workspace if possible.
+    if ws_rel_execroot:
+        ws_rel_output_base = ws_rel_execroot / "../../"
+        if ws_rel_output_base.exists():
+            return ws_rel_output_base
+        else:
+            print(
+                "\033[33mWARNING:\033[0m Relative workspace output base path '{}' does not exist! "
+                "(Have you built the project at least once? Is this a remote or read-only workspace?) "
+                "Falling back to absolute path in Bazel's cache, this could be less stable over time.".format(
+                    ws_rel_output_base
+                ),
+                file=sys.stderr,
+            )
+
+    # Second, attempt to get the bazel cache execroot directly.
+    info_ob_process = subprocess.run(
+        ["bazel", "info", "output_base"],
+        capture_output=True,
+    )
+
+    if info_ob_process.returncode == 0 and info_ob_process.stdout:
+        ws_abs_output_base = pathlib.Path(info_ob_process.stdout.decode().strip())
+        if ws_abs_output_base.exists():
+            if ws_abs_output_base.is_relative_to(ws_root):
+                return ws_abs_output_base.relative_to(ws_root)
+            return ws_abs_output_base
+        else:
+            print(
+                "\033[33mWARNING:\033[0m Absolute workspace output base '{}' does not exist! "
+                "(Have you built the project at least once? Is this a remote build?) "
+                "Falling back to workspace root path, this could affect paths to external dependencies.".format(
+                    ws_abs_output_base
+                ),
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "\033[31mERROR:\033[0m Getting output_base path from 'bazel info' failed!\n{}".format(
+                info_ob_process.stderr
+            ),
+            file=sys.stderr,
+        )
+
+    return None
 
 
 def main():
     workspace_root = _ensure_cwd_is_workspace_root()
 
     workspace_execroot = _get_workspace_exec_root(workspace_root)
+    rel_execroot = workspace_execroot.relative_to(workspace_root)
+    rel_output_base = _get_workspace_output_base(workspace_root, rel_execroot)
 
     target_patterns = [
         # Begin: template filled by Bazel
@@ -372,7 +457,10 @@ def main():
     ]
 
     comp_cmds, exports, deps_issues = _gather_cc_meta(
-        _get_target_list(target_patterns), str(workspace_execroot)
+        _get_target_list(target_patterns),
+        str(workspace_root),
+        rel_execroot,
+        rel_output_base,
     )
 
     if not comp_cmds:
