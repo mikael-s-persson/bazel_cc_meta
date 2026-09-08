@@ -20,7 +20,7 @@ This script can be invoked directly or through `bazel run`.
                    (default: "external/"). If it's an empty string, it will match nothing.
   --include-paths: A regex applied to file paths, if it matches, those files are fixed, unless
                    they match the `--exclude-paths` pattern (default: ".*").
-  --exclude-checks: A regex applied to checks, checks matching this pattern won't be fixed 
+  --exclude-checks: A regex applied to checks, checks matching this pattern won't be fixed
                     (default: "modernize-use-ranges" (because it breaks the code by leaving
                     stray commas)). If it's an empty string, it will match nothing.
   --include-checks: A regex applied to checks, checks matching this pattern will be fixed, unless
@@ -34,6 +34,7 @@ import os
 import pathlib
 import re
 import sys
+
 from cc_meta.yaml_wrapper import yaml_safe_load_all
 
 

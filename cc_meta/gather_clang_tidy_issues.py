@@ -20,12 +20,13 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import pathlib
+import re
 import subprocess
 import sys
-from cc_meta.yaml_wrapper import yaml_safe_load_all, yaml_safe_dump
 from functools import lru_cache
+
+from cc_meta.yaml_wrapper import yaml_safe_dump, yaml_safe_load_all
 
 
 def _get_target_list(target_patterns: list, unknown_args: list):
@@ -100,7 +101,11 @@ def _clang_tidy_version(target_list: list, unknown_args: list):
     tidy_bin = ""
     for target in target_list:
         target_toolchain_query = f"kind('cc_toolchain',deps({target}))"
-        target_toolchain_exec = '--starlark:expr=getattr(providers(target).get(([p for p in providers(target).keys() if "CcToolchainInfo" in str(p)] or [None])[0], None), "compiler_executable", "not_found")'
+        target_toolchain_exec = (
+            "--starlark:expr=getattr(providers(target).get("
+            + '([p for p in providers(target).keys() if "CcToolchainInfo" in str(p)] or [None])[0], '
+            + 'None), "compiler_executable", "not_found")'
+        )
         target_toolchain_cquery_args = [
             "bazel",
             "cquery",
@@ -337,7 +342,7 @@ def main():
     parser.add_argument("--gather-into-github", help="Output SARIF file for github CI")
     args, unknown_args = parser.parse_known_args()
 
-    workspace_root = _ensure_cwd_is_workspace_root()
+    _ensure_cwd_is_workspace_root()
 
     target_patterns = [
         # Begin: template filled by Bazel

@@ -129,6 +129,12 @@ def clang_tidy_aspect_factory(
         fragments = ["cpp"],
         toolchains = use_cc_toolchain(),
         attrs = {
+            "_run_clang_tidy_on_cmd": attr.label(
+                default = Label("@bazel_cc_meta//cc_meta:run_clang_tidy_on_cmd"),
+                executable = True,
+                cfg = "exec",
+                doc = "Injects the execroot into the compile_commands file and runs clang-tidy.",
+            ),
             "_tidy_config_file": attr.label(
                 default = tidy_config_file,
                 doc = "Location of a .clang-tidy file to use.",
@@ -136,12 +142,6 @@ def clang_tidy_aspect_factory(
             "_tidy_configs": attr.label_list(
                 default = tidy_configs,
                 doc = "Location of a .clang-tidy file to use.",
-            ),
-            "_run_clang_tidy_on_cmd": attr.label(
-                default = Label("@bazel_cc_meta//cc_meta:run_clang_tidy_on_cmd"),
-                executable = True,
-                cfg = "exec",
-                doc = "Injects the execroot into the compile_commands file and runs clang-tidy.",
             ),
         },
     )
