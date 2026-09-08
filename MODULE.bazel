@@ -4,6 +4,11 @@ module(
     bazel_compatibility = [">=7.4.0"],
 )
 
+http_archive = use_repo_rule(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive",
+)
+
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_python", version = "1.7.0")
@@ -17,3 +22,11 @@ python.toolchain(
     python_version = "3.11",
 )
 use_repo(python, "python_versions")
+
+http_archive(
+    name = "pyyaml",
+    build_file = "//third_party:pyyaml.BUILD",
+    integrity = "sha256-x7RQEeBSRYrnkBXV7qMEbDfQmQI9SyU93ibuHCnqLzY=",
+    strip_prefix = "pyyaml-6.0.3/lib",
+    urls = ["https://github.com/yaml/pyyaml/archive/refs/tags/6.0.3.tar.gz"],
+)
