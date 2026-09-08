@@ -299,9 +299,124 @@ my_cc_meta_aspect_for_linux = cc_meta_aspect_factory(
 
 # Linters
 
+Some linting tools are provided as addtional features of `bazel_cc_meta` for convenience and because
+they inter-operate nicely with the core functionality.
+
 ## Clang-tidy aspect
 
+The clang-tidy aspect is exactly what it sounds like, an aspect that runs clang-tidy over all the source
+files in all your bazel targets. It works in a way that is very similar to the core aspect for generating
+the metadata. The macros and aspect definitions are found in `cc_meta/linters.bzl`.
 
+ - Default aspect: `@bazel_cc_meta//cc_meta:linters.bzl%default_clang_tidy_aspect`
+ - Default gather "all" reports tool: `@bazel_cc_meta//cc_meta:gather_clang_tidy_all`
+ - Apply clang-tidy fixes tool: `@bazel_cc_meta//cc_meta:apply_clang_tidy_fixes`
+
+**NOTE:** The default aspect is very unlikely to be appropriate since it will only find the `.clang-tidy`
+and `.clang-format` files if they happen to be brought as a dependency some other way. **You will probably
+have to create a custom clang-tidy aspect with your tidy and format configs.**
+
+To create your own clang-tidy aspect, you will first have to create a filegroup target for your config
+files. In a top-level `BUILD` file:
+
+```python
+filegroup(
+    name = "my_clang_tidy_configs",
+    srcs = [
+        ".clang-tidy",
+        ".clang-format",
+    ],
+    visibility = ["//visibility:public"],
+)
+```
+
+Then, in a bzl file (e.g., //my:defs.bzl), you create your own aspect:
+
+```python
+load("@bazel_cc_meta//cc_meta:linters.bzl", "clang_tidy_aspect_factory")
+load("//my:cc_meta_defs.bzl", "my_cc_meta_aspect")  # Not needed if it's in the same *.bzl file.
+
+my_clang_tidy_aspect = clang_tidy_aspect_factory(
+    tidy_configs = [Label("//:my_clang_tidy_configs")],  # Makes configs findable during aspect's run
+    cc_meta_aspect = my_cc_meta_aspect,                  # Needed to obtain compiler commands
+)
+```
+
+When specifying the `tidy_configs` argument, the set of labels (and associated files) are brought into
+the execution dependencies for the clang-tidy invocation, making them discoverable in the usual way
+that clang-tidy discovers them recursively in parent directories of the files it is analysing. If you
+want to explicitly provide a particular config file, you can use the `tidy_config_file` argument
+instead and provide a filegroup target with a single file in it (a `.clang-tidy`-like file). That way,
+you could have multiple aspects running different sets of checks (e.g., lightweight set for a pre-merge
+hook versus a heavier one for nightlies).
+
+The clang-tidy executable that the aspect uses is detected and derived from the `cc_toolchain` associated
+with the targets analysed. In other words, if you use the default toolchain, which finds a system compiler
+like `/usr/bin/gcc` or `/usr/bin/clang`, depending on your system's environment, then the clang-tidy aspect
+will attempt to use `/usr/bin/clang-tidy`, or fail if that is not installed on your system. If you use
+a hermetic toolchain (e.g., `toolchains_llvm`), then the clang-tidy aspect attempts to find `clang-tidy`
+in the set of files associated with that toolchain, and fails otherwise.
+
+Similar to the "refresh" script, there is an associated "gather" script for the clang-tidy aspect that
+can be created for your project's needs, for your target patterns and custom aspect. In a `BUILD` file,
+you would define that script like so (say, in `//my:BUILD`):
+
+```python
+load("@bazel_cc_meta//cc_meta:linters.bzl", "clang_tidy_issues_gatherer")
+clang_tidy_issues_gatherer(
+    name = "gather_clang_tidy_issues",
+    clang_tidy_aspect = "//my:defs.bzl%my_clang_tidy_aspect",  # Default: "@bazel_cc_meta//cc_meta:linters.bzl%default_clang_tidy_aspect"
+    targets = ["//my:foo"],  # Default: "//..." (aka "all")
+    visibility = ["//visibility:public"],
+)
+```
+
+Then, you can run the aspect and gather all the reported fixes into a single file the same way as with
+the refresh scripts:
+
+```bash
+bazel run [build_options] //my:gather_clang_tidy_issues -- [build_options]
+```
+
+This will generate a `clang_tidy_fixes.yaml` file containing all fixable issues that clang-tidy found.
+
+The gather script can also take the following additional arguments:
+
+ - `--gather-into-yaml=path`: Output path for combined yaml (default: `clang_tidy_fixes.yaml`).
+ - `--no-gather-into-yaml`: Flag to suppress output of the combined yaml.
+ - `--gather-into-gitlab=path`: Output path for a Code Climate JSON for a Gitlab CI runner (default: none).
+ - `--gather-into-github=path`: Output path for a SARIF JSON file for a Github CI runner (default: none).
+
+## Apply clang-tidy fixes
+
+The `@bazel_cc_meta//cc_meta:apply_clang_tidy_fixes` script takes reported fixes from clang-tidy and
+applies them.
+
+This is basically a replacement for the standard `clang-apply-replacements` tool, except that it doesn't
+suck. Instead of doing very brittle and arcane directory traversals in search of compile commands and
+clang-tidy fixes like `clang-apply-replacements` does, this script takes a path to a specific yaml
+file containing the fixes you want to apply. And it has a number of other useful options.
+
+This script can be invoked directly (build and run) or through `bazel run`. And it has the following
+arguments:
+
+ - `-f,--fixes=path`: Path to the yaml file containing clang-tidy fixes (default: `clang_tidy_fixes.yaml`).
+ - `-y,--yes`: Flag to run in non-interactive mode. In the default interactive mode, each fix must be
+               confirmed (enter or type 'y'), and if any fixes conflict with each other (overlap),
+               the user is prompted to make a choice. In non-interactive mode, all fixes are
+               applied and only the first of any set of conflicting fixes is applied.
+ - `-d,--dry-run`: Flag to run through the fixes without writing out the changes to the files.
+ - `--exclude-paths=regex`: A regex applied to file paths, if it matches, those files are not fixed (default: `"external/"`).
+                            If it's an empty string, it will be replaced by a match-nothing.
+ - `--include-paths=regex`: A regex applied to file paths, if it matches, those files are fixed, unless
+                            they match the `--exclude-paths` pattern (default: `".*"`).
+ - `--exclude-checks=regex`: A regex applied to checks, checks matching this pattern won't be fixed
+                             (default: `"modernize-use-ranges"` (because it breaks the code by leaving
+                             stray commas)). If it's an empty string, it will be replaced by a match-nothing.
+ - `--include-checks=regex`: A regex applied to checks, checks matching this pattern will be fixed, unless
+                             they match the `--exclude-checks` pattern (default: `".*"`).
+ - `[file] ...`: Remaining arguments are a list of files to fix, if none, then fix everything. This is
+                 obviously useful if creating a pre-commit hook (append the list of changed files).
 
 # Known issues
 
