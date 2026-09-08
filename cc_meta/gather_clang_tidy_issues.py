@@ -95,7 +95,8 @@ def _clang_tidy_version(target_list: list, unknown_args: list):
         "--noshow_progress",
     ] + unknown_args
 
-    # Query C++ rules below each target pattern
+    # Query targets from the list to find the underlying cc_toolchain
+    # Stop as soon as we probably found clang-tidy
     tidy_bin = ""
     for target in target_list:
         target_toolchain_query = f"kind('cc_toolchain',deps({target}))"
@@ -198,14 +199,14 @@ def _load_yaml_or_empty_list(filename):
 
 # Set maxsize to the maximum number of file contents you want to keep in memory
 @lru_cache(maxsize=32)
-def _read_file_cached(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
+def _read_file_cached(file_path: str) -> bytes:
+    with open(file_path, "rb") as f:
         return f.read()
 
 
-def _file_offset_to_loc(content: str, file_offset: int):
-    line = content[0:file_offset].count("\n") + 1
-    col = file_offset - max(0, content.rfind("\n", 0, file_offset))
+def _file_offset_to_loc(content: bytes, file_offset: int):
+    line = content[0:file_offset].count(b"\n") + 1
+    col = file_offset - max(0, content.rfind(b"\n", 0, file_offset))
     return line, col
 
 
@@ -303,7 +304,8 @@ def _ensure_cwd_is_workspace_root():
         workspace_root = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
     except KeyError:
         print(
-            ">>> BUILD_WORKSPACE_DIRECTORY was not found in the environment. Run this tool with `bazel run`.",
+            ">>> BUILD_WORKSPACE_DIRECTORY was not found in the environment. "
+            + "Run this tool with `bazel run`.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -398,10 +400,20 @@ def main():
                     if not os.path.exists(fix_path):
                         continue
                     fix_loc = rep.get("Offset", 0)
-                    fix_content = _read_file_cached(primary_path)
+                    fix_content = _read_file_cached(fix_path)
                     fix_line, fix_col = _file_offset_to_loc(fix_content, fix_loc)
                     rep["FileLine"] = fix_line
                     rep["FileCol"] = fix_col
+            if "Ranges" in diag_msg:
+                for rang in diag_msg["Ranges"]:
+                    fix_path = rang["FilePath"]
+                    if not os.path.exists(fix_path):
+                        continue
+                    fix_loc = rang.get("FileOffset", 0)
+                    fix_content = _read_file_cached(fix_path)
+                    fix_line, fix_col = _file_offset_to_loc(fix_content, fix_loc)
+                    rang["FileLine"] = fix_line
+                    rang["FileCol"] = fix_col
 
     if args.gather_into_gitlab:
         gitlab_issues = []
@@ -417,7 +429,8 @@ def main():
             # GitLab Code Quality format
             issue = {
                 "type": "issue",
-                "description": f"{message_text} [{rule_name}] (at {issue_path}:{issue_line}:{issue_col})",
+                "description": f"{message_text} [{rule_name}] "
+                + f"(at {issue_path}:{issue_line}:{issue_col})",
                 "categories": ["Style"],
                 "check_name": rule_name,
                 "fingerprint": diag_msg["Fingerprint"],
@@ -435,10 +448,18 @@ def main():
                     fix_col = rep.get("FileCol", 1)
                     fix_path = rep["FilePath"]
                     fix_rep = rep["ReplacementText"]
-                    issue["content"] = {
-                        "body": f"###Suggested Fix\n{fix_path}:{fix_line}:{fix_col}: {fix_rep}"
-                    }
-                    break
+                    issue[
+                        "description"
+                    ] += f"\n###Suggested Fix\n{fix_path}:{fix_line}:{fix_col}: {fix_rep}"
+            if "Ranges" in diag_msg:
+                for rang in diag_msg["Ranges"]:
+                    fix_line = rang.get("FileLine", 1)
+                    fix_col = rang.get("FileCol", 1)
+                    fix_len = rang.get("Length", 0)
+                    fix_path = rang["FilePath"]
+                    issue[
+                        "description"
+                    ] += f"\nAt {fix_path}:{fix_line}:{fix_col}-{fix_col + fix_len}"
             gitlab_issues.append(issue)
         with open(args.gather_into_gitlab, "w", encoding="utf-8") as out_file:
             json.dump(gitlab_issues, out_file, indent=2)
@@ -502,6 +523,14 @@ def main():
                     fix_path = rep["FilePath"]
                     fix_rep = rep["ReplacementText"]
                     message_text += f"\n\n**Suggested Fix**\n`{fix_path}:{fix_line}:{fix_col}: {fix_rep}`"
+
+            if "Ranges" in diag_msg:
+                for rang in diag_msg["Ranges"]:
+                    fix_line = rang.get("FileLine", 1)
+                    fix_col = rang.get("FileCol", 1)
+                    fix_len = rang.get("Length", 0)
+                    fix_path = rang["FilePath"]
+                    message_text += f"\n\n**Range**\n`{fix_path}:{fix_line}:{fix_col}-{fix_col + fix_len}`"
 
             # Append the unique result node
             sarif_result = {

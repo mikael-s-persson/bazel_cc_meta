@@ -16,13 +16,13 @@ This script can be invoked directly or through `bazel run`.
             the user is prompted to make a choice. In non-interactive mode, all fixes are
             applied and only the first of any set of conflicting fixes is applied.
   -d,--dry-run: Run through without writing out the changes to the files.
-  --exclude-paths: A regex applied to file paths, if it matches, those files are not fixed (default: "external/").
-                   If it's an empty string, it will be replaced by a match-nothing.
+  --exclude-paths: A regex applied to file paths, if it matches, those files are not fixed
+                   (default: "external/"). If it's an empty string, it will match nothing.
   --include-paths: A regex applied to file paths, if it matches, those files are fixed, unless
                    they match the `--exclude-paths` pattern (default: ".*").
   --exclude-checks: A regex applied to checks, checks matching this pattern won't be fixed 
-                    (default: "modernize-use-ranges" (because it breaks the code by leaving a stray comma)).
-                    If it's an empty string, it will be replaced by a match-nothing.
+                    (default: "modernize-use-ranges" (because it breaks the code by leaving
+                    stray commas)). If it's an empty string, it will match nothing.
   --include-checks: A regex applied to checks, checks matching this pattern will be fixed, unless
                     they match the `--exclude-checks` pattern (default: ".*").
   trailing positional arguments: A list of files to fix, if none, then fix everything.
@@ -53,12 +53,12 @@ def _print_replacement(rep: dict, original_text: str):
     rep_offset = rep["Offset"]
     rep_length = rep["Length"]
     print(f"[{rep_check}] {rep_message}")
-    prior_nl = max(0, original_text.rfind("\n", 0, rep_offset) + 1)
-    next_nl = original_text.find("\n", rep_offset)
+    prior_nl = max(0, original_text.rfind(b"\n", 0, rep_offset) + 1)
+    next_nl = original_text.find(b"\n", rep_offset)
     next_nl = next_nl if next_nl >= 0 else len(original_text)
-    print("At: {}".format(original_text[prior_nl:next_nl]))
+    print("At: {}".format(original_text[prior_nl:next_nl].decode("utf-8")))
     print("    {}{}".format(" " * (rep_offset - prior_nl), "^" * max(1, rep_length)))
-    print("    {}{}".format(" " * (rep_offset - prior_nl), rep["ReplacementText"]))
+    print("   {}'{}'".format(" " * (rep_offset - prior_nl), rep["ReplacementText"]))
 
 
 def _ensure_cwd_is_workspace_root():
@@ -78,7 +78,8 @@ def _ensure_cwd_is_workspace_root():
 def main():
     parser = argparse.ArgumentParser(
         prog="ApplyClangTidyFixes",
-        description="Apply clang-tidy exported fixes. Basically, like clang-apply-replacements, but usable.",
+        description="Apply clang-tidy exported fixes. Basically, like "
+        + "clang-apply-replacements, but usable.",
     )
     parser.add_argument(
         "-f",
@@ -106,7 +107,8 @@ def main():
     parser.add_argument(
         "--include-paths",
         default=".*",
-        help="A regex pattern for which matching file paths will be fixed (unless excluded by --exclude-paths).",
+        help="A regex pattern for which matching file paths will be fixed "
+        + "(unless excluded by --exclude-paths).",
     )
     parser.add_argument(
         "--exclude-checks",
@@ -116,7 +118,8 @@ def main():
     parser.add_argument(
         "--include-checks",
         default=".*",
-        help="A regex pattern for which matching clang-tidy check will be fixed (unless excluded by --exclude-checks).",
+        help="A regex pattern for which matching clang-tidy check will be fixed "
+        + "(unless excluded by --exclude-checks).",
     )
     parser.add_argument(
         "file_list",
@@ -155,7 +158,7 @@ def main():
         new_tidy_diags = []
         for diag in tidy_mainfile["Diagnostics"]:
             diag_msg = diag["DiagnosticMessage"]
-            if "Replacements" not in diag_msg:
+            if "Replacements" not in diag_msg or not diag_msg["Replacements"]:
                 # Skip diagnostics without fix suggestions
                 continue
             diag_msg["FilePath"] = diag_msg["FilePath"].removeprefix("./")
@@ -186,7 +189,7 @@ def main():
         replacements_list, key=lambda x: (x["FilePath"], x["Offset"])
     )
 
-    current_file = {"path": "", "content": "", "output": "", "i": 0, "skip": False}
+    current_file = {"path": "", "content": bytes(), "output": bytes(), "i": 0}
     fixes_applied = 0
     files_fixed = 0
 
@@ -198,24 +201,36 @@ def main():
         current_file["output"] += current_file["content"][current_file["i"] :]
         if args.dry_run:
             return
-        with open(current_file["path"], "w", encoding="utf-8") as out_file:
+        with open(current_file["path"], "wb") as out_file:
             out_file.write(current_file["output"])
 
     def load_new_file(fpath):
         nonlocal current_file
         current_file["path"] = fpath
-        with open(current_file["path"], "r", encoding="utf-8") as in_file:
+        with open(current_file["path"], "rb") as in_file:
             current_file["content"] = in_file.read()
         current_file["i"] = 0
-        current_file["skip"] = False
-        current_file["output"] = ""
+        current_file["output"] = bytes()
 
-    for rep_i, rep in enumerate(sorted_replacements):
+    def fastforward_to_next_file(next_i, current_path):
+        # Advance to next file or end
+        next_i += 1
+        while next_i < len(sorted_replacements):
+            if current_path != sorted_replacements[next_i]["FilePath"]:
+                break
+            next_i += 1
+        return next_i
+
+    rep_i = 0
+    while rep_i < len(sorted_replacements):
+        rep = sorted_replacements[rep_i]
         if not rep["Active"]:
+            rep_i += 1
             continue
         # Detect a new file.
         if current_file["path"] != rep["FilePath"]:
             if files_to_fix and rep["FilePath"] not in files_to_fix:
+                rep_i = fastforward_to_next_file(rep_i, rep["FilePath"])
                 continue
             flush_current_output()
             load_new_file(rep["FilePath"])
@@ -224,12 +239,18 @@ def main():
             print("===== Fixing file '{}'".format(current_file["path"]))
             if not args.yes:
                 print("==================================================")
-        elif current_file["skip"]:
-            rep["Active"] = False
-            continue
         # Check for conflicts with next replacements
         rep_offset = rep["Offset"]
+        if rep_offset < current_file["i"]:
+            print(
+                f"ERROR: Next fix is at offset {rep_offset}, but we've already moved beyond "
+                + "that point! That should never happen! Skipping...",
+                file=sys.stderr,
+            )
+            rep_i += 1
+            continue
         rep_length = rep["Length"]
+        conflict_set = []
         for rep_ni in range(rep_i + 1, len(sorted_replacements)):
             rep_n = sorted_replacements[rep_ni]
             # Already suppressed.
@@ -245,32 +266,49 @@ def main():
             if args.yes:
                 rep_n["Active"] = False
                 break
+            # Add to conflict set
+            conflict_set.append(rep_ni)
+
+        # Resolve conflicts
+        if conflict_set:
+            conflict_set.insert(0, rep_i)
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print("Conflicting fixes! Please choose one of the following fixes:\n1:")
-            _print_replacement(rep, current_file["content"])
-            print("2:")
-            _print_replacement(rep_n, current_file["content"])
+            print("Conflicting fixes! Please choose one of the following fixes:")
+            for c_i, c_rep_i in enumerate(conflict_set):
+                print(f"{c_i + 1}:")
+                _print_replacement(
+                    sorted_replacements[c_rep_i], current_file["content"]
+                )
             kept_fix = (
                 input(
-                    "Please choose (1 or 2; 0: skip both; s: skip this file) (default: 1): "
+                    "Please choose (0: skip all; s: skip all and the rest of this file) "
+                    + "(default: 1): "
                 )
                 .strip()
                 .lower()
             )
             print("------------------------------------------------------------")
-            if not kept_fix or kept_fix == "1":
-                rep_n["Active"] = False
-                break
-            if kept_fix == "2":
-                rep["Active"] = False
-                break
-            rep["Active"] = False
-            rep_n["Active"] = False
-            if kept_fix == "s":
-                current_file["skip"] = True
-            break
-        # Check again, if we deactivate this fix.
-        if not rep["Active"]:
+            if not kept_fix:
+                kept_fix = 1
+            elif kept_fix == "s":
+                kept_fix = -1
+            else:
+                kept_fix = int(kept_fix)
+            # Deactivate skipped fixes
+            for c_i, c_rep_i in enumerate(conflict_set):
+                if kept_fix != c_i + 1:
+                    sorted_replacements[c_rep_i]["Active"] = False
+            if kept_fix < 0:
+                # Skip all fixes remaining in this file
+                rep_i = fastforward_to_next_file(rep_i, current_file["path"])
+                continue
+            if kept_fix == 0:
+                # Skip all conflicting fixes
+                rep_i = conflict_set[-1]
+                rep_i += 1
+                continue
+            # Skip to chosen fix and start the loop again (in case it conflicts with other fixes)
+            rep_i = conflict_set[kept_fix - 1]
             continue
 
         # Ask user if the replacement should be applied
@@ -278,26 +316,34 @@ def main():
             print(">>> Applying the following fix:")
             _print_replacement(rep, current_file["content"])
             kept_fix = (
-                input("Please choose (y or n; s: skip this file) (default: y): ")
+                input(
+                    "Please choose (y or n; s: skip it and the rest of this file) (default: y): "
+                )
                 .strip()
                 .lower()
             )
-            if kept_fix:
-                if kept_fix == "s":
-                    current_file["skip"] = True
-                if kept_fix != "y":
-                    rep["Active"] = False
-                    continue
+            if not kept_fix:
+                kept_fix = "y"
+            if kept_fix == "s":
+                # Skip all fixes remaining in this file
+                rep_i = fastforward_to_next_file(rep_i, current_file["path"])
+                continue
+            if kept_fix != "y":
+                rep["Active"] = False
+                rep_i += 1
+                continue
 
         # Apply the replacement
         current_file["output"] += current_file["content"][
             current_file["i"] : rep_offset
         ]
         current_file["i"] = rep_offset + rep_length
-        current_file["output"] += rep["ReplacementText"]
+        current_file["output"] += rep["ReplacementText"].encode("utf-8")
         fixes_applied += 1
         if not args.yes:
             print("<<< Fix applied!")
+        # Move on to the next fix
+        rep_i += 1
 
     flush_current_output()
 
