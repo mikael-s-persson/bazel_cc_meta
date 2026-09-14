@@ -68,9 +68,10 @@ def main():
         )
 
         # Run clang-tidy and let stdout/stderr pass through to Bazel console
-        result = subprocess.run(tidy_cmd, capture_output=True)
+        result = subprocess.run(tidy_cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
+            print(result.stdout, file=sys.stderr)
             print(result.stderr, file=sys.stderr)
         else:
             # Make sure there is something written, Bazel requires actions to generate

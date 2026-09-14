@@ -102,7 +102,7 @@ def main():
     )
     parser.add_argument(
         "--exclude-paths",
-        default="external/",
+        default="external/|bazel-out/",
         help="A regex pattern for which matching file paths will be skipped.",
     )
     parser.add_argument(
@@ -280,21 +280,27 @@ def main():
                 _print_replacement(
                     sorted_replacements[c_rep_i], current_file["content"]
                 )
-            kept_fix = (
-                input(
-                    "Please choose (0: skip all; s: skip all and the rest of this file) "
-                    + "(default: 1): "
+            kept_fix = None
+            while kept_fix is None:
+                kept_fix = (
+                    input(
+                        "Please choose (0: skip all; s: skip all and the rest of this file) "
+                        + "(default: 1): "
+                    )
+                    .strip()
+                    .lower()
                 )
-                .strip()
-                .lower()
-            )
+                if not kept_fix:
+                    kept_fix = 1
+                elif kept_fix == "s":
+                    kept_fix = -1
+                else:
+                    try:
+                        kept_fix = int(kept_fix)
+                    except ValueError:
+                        print(f"'{kept_fix}' is not a valid choice!")
+                        kept_fix = None
             print("------------------------------------------------------------")
-            if not kept_fix:
-                kept_fix = 1
-            elif kept_fix == "s":
-                kept_fix = -1
-            else:
-                kept_fix = int(kept_fix)
             # Deactivate skipped fixes
             for c_i, c_rep_i in enumerate(conflict_set):
                 if kept_fix != c_i + 1:
@@ -316,15 +322,20 @@ def main():
         if not args.yes:
             print(">>> Applying the following fix:")
             _print_replacement(rep, current_file["content"])
-            kept_fix = (
-                input(
-                    "Please choose (y or n; s: skip it and the rest of this file) (default: y): "
+            kept_fix = None
+            while not kept_fix:
+                kept_fix = (
+                    input(
+                        "Please choose (y or n; s: skip it and the rest of this file) (default: y): "
+                    )
+                    .strip()
+                    .lower()
                 )
-                .strip()
-                .lower()
-            )
-            if not kept_fix:
-                kept_fix = "y"
+                if not kept_fix:
+                    kept_fix = "y"
+                if kept_fix not in ["s", "n", "y"]:
+                    print(f"'{kept_fix}' is not a valid choice!")
+                    kept_fix = None
             if kept_fix == "s":
                 # Skip all fixes remaining in this file
                 rep_i = fastforward_to_next_file(rep_i, current_file["path"])

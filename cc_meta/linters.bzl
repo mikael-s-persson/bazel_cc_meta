@@ -17,7 +17,7 @@ CcClangTidyReportInfo = provider(
 def _clang_tidy_aspect_impl(target, ctx):
     tidy_fixes = ctx.actions.declare_file(target.label.name + "_cc_meta_clang_tidy_fixes.yaml")
 
-    if (CcMetaInfo not in target) or (CcInfo not in target) or (ctx.label.workspace_root.startswith("external")):
+    if (CcMetaInfo not in target) or (CcInfo not in target) or (not ctx.attr._run_on_external and ctx.label.workspace_root.startswith("external")):
         # Nothing to lint
         ctx.actions.write(output = tidy_fixes, content = "")
         return [
@@ -32,11 +32,17 @@ def _clang_tidy_aspect_impl(target, ctx):
 
     if hasattr(ctx.rule.attr, "srcs"):
         for src in ctx.rule.attr.srcs:
-            buildable_files.extend(src.files.to_list())
+            for f in src.files.to_list():
+                if not ctx.attr._run_on_generated and f.root.path:
+                    continue
+                buildable_files.append(f)
 
     if hasattr(ctx.rule.attr, "hdrs"):
         for src in ctx.rule.attr.hdrs:
-            buildable_files.extend(src.files.to_list())
+            for f in src.files.to_list():
+                if not ctx.attr._run_on_generated and f.root.path:
+                    continue
+                buildable_files.append(f)
 
     if not buildable_files:
         # Nothing to lint
@@ -103,7 +109,9 @@ def _clang_tidy_aspect_impl(target, ctx):
 def clang_tidy_aspect_factory(
         tidy_config_file = Label("@bazel_cc_meta//cc_meta:empty_placeholder"),
         tidy_configs = [],
-        cc_meta_aspect = default_cc_meta_aspect):
+        cc_meta_aspect = default_cc_meta_aspect,
+        run_on_external = False,
+        run_on_generated = False):
     """
     Create a clang-tidy aspect to gather reports about C++ sources.
 
@@ -118,6 +126,8 @@ def clang_tidy_aspect_factory(
         tidy_config_file: Location of a .clang-tidy file to use.
         tidy_configs: List of config files needed and found by clang-tidy.
         cc_meta_aspect: Aspect to run.
+        run_on_external: Run clang-tidy on external files (default: false).
+        run_on_generated: Run clang-tidy on generated files (default: false).
     """
     return aspect(
         implementation = _clang_tidy_aspect_impl,
@@ -134,6 +144,14 @@ def clang_tidy_aspect_factory(
                 executable = True,
                 cfg = "exec",
                 doc = "Injects the execroot into the compile_commands file and runs clang-tidy.",
+            ),
+            "_run_on_external": attr.bool(
+                default = run_on_external,
+                doc = "Run clang-tidy on external files (default: false).",
+            ),
+            "_run_on_generated": attr.bool(
+                default = run_on_generated,
+                doc = "Run clang-tidy on generated files (default: false).",
             ),
             "_tidy_config_file": attr.label(
                 default = tidy_config_file,
