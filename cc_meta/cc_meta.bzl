@@ -2,7 +2,15 @@
 
 load("@bazel_skylib//lib:collections.bzl", "collections")
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@rules_cc//cc:action_names.bzl", "ASSEMBLE_ACTION_NAME", "CPP_COMPILE_ACTION_NAME", "C_COMPILE_ACTION_NAME", "OBJCPP_COMPILE_ACTION_NAME", "OBJC_COMPILE_ACTION_NAME", "PREPROCESS_ASSEMBLE_ACTION_NAME")
+load(
+    "@rules_cc//cc:action_names.bzl",
+    "ASSEMBLE_ACTION_NAME",
+    "CPP_COMPILE_ACTION_NAME",
+    "C_COMPILE_ACTION_NAME",
+    "OBJCPP_COMPILE_ACTION_NAME",
+    "OBJC_COMPILE_ACTION_NAME",
+    "PREPROCESS_ASSEMBLE_ACTION_NAME",
+)
 load("@rules_cc//cc:defs.bzl", "CcInfo")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cpp_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
@@ -44,7 +52,9 @@ _make_cc_meta_deviations = rule(
 
 # These deviations collect a few shadow dependencies inserted by Bazel.
 _CC_META_DEFAULT_DEVIATIONS = {
-    Label("@rules_cc//:link_extra_lib"): json.encode({"alwaysused": True, "skip": True}),
+    Label("@rules_cc//:link_extra_lib"): json.encode(
+        {"alwaysused": True, "skip": True},
+    ),
     Label("@rules_cc//:empty_lib"): json.encode({"alwaysused": True, "skip": True}),
 }
 
@@ -92,11 +102,7 @@ def make_cc_meta_deviations(name, deviations = {}, **kwargs):
     json_deviations = {}
     for key, values in deviations.items():
         json_deviations.update({key: json.encode(values)})
-    _make_cc_meta_deviations(
-        name = name,
-        deviations = json_deviations,
-        **kwargs
-    )
+    _make_cc_meta_deviations(name = name, deviations = json_deviations, **kwargs)
 
 def _find_cc_meta_deviation(target, deviations):
     # Deviations could be a Target or Label deviation.
@@ -119,8 +125,21 @@ def _match_lists(a_list, b_list):
 # List of single arguments (e.g., '-foo', not '-foo foo_value') to take out of compile_commands arguments.
 _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS = ["-fno-canonical-system-headers"]
 
-_FILTER_OUT_SINGLE_ARGS_FROM_INCL_COMPILE_CLANG = ["-nostdinc++", "-nostdinc", "-nostdlibinc", "-nobuiltininc", "-ibuiltininc"]
-_FILTER_OUT_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG = ["-idirafter", "--include-directory-after", "-isystem", "-isystem-after", "-cxx-isystem", "-stdlib++-isystem"]
+_FILTER_OUT_SINGLE_ARGS_FROM_INCL_COMPILE_CLANG = [
+    "-nostdinc++",
+    "-nostdinc",
+    "-nostdlibinc",
+    "-nobuiltininc",
+    "-ibuiltininc",
+]
+_FILTER_OUT_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG = [
+    "-idirafter",
+    "--include-directory-after",
+    "-isystem",
+    "-isystem-after",
+    "-cxx-isystem",
+    "-stdlib++-isystem",
+]
 _IMACROS_DOUBLE_ARGS_FROM_INCL_COMPILE_CLANG = ["--imacros", "-imacros"]
 
 def _filter_args_for_incl_compile_clang(cli_args):
@@ -168,7 +187,20 @@ _CC_SOURCE = ["cc", "cpp", "cxx", "c++", "C", "cu", "cl", "cppmap"]
 _C_SOURCE = ["c"]
 _OBJC_SOURCE = ["m"]
 _OBJCPP_SOURCE = ["mm", "M"]
-_CC_HEADER = ["h", "hh", "hpp", "ipp", "hxx", "h++", "inc", "inl", "tlh", "tli", "H", "tcc"]
+_CC_HEADER = [
+    "h",
+    "hh",
+    "hpp",
+    "ipp",
+    "hxx",
+    "h++",
+    "inc",
+    "inl",
+    "tlh",
+    "tli",
+    "H",
+    "tcc",
+]
 _ASSEMBLER_WITH_C_PREPROCESSOR = ["S"]
 _ASSEMBLER = ["s", "asm"]
 
@@ -218,23 +250,40 @@ def _get_action_from_lang_spec(opts):
 
 def _cc_meta_aspect_impl(target, ctx):
     # Declare all the outputs up-top.
-    comb_incl_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_imports.json")
-    comb_all_incl_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_all_imports.json")
-    comb_cmd_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_compile_commands.json")
-    deps_issues_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_deps_issues.json")
-    pub_hdrs_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_exports.json")
+    comb_incl_file = ctx.actions.declare_file(
+        ctx.rule.attr.name + "_cc_meta_imports.json",
+    )
+    comb_all_incl_file = ctx.actions.declare_file(
+        ctx.rule.attr.name + "_cc_meta_all_imports.json",
+    )
+    comb_cmd_file = ctx.actions.declare_file(
+        ctx.rule.attr.name + "_cc_meta_compile_commands.json",
+    )
+    deps_issues_file = ctx.actions.declare_file(
+        ctx.rule.attr.name + "_cc_meta_deps_issues.json",
+    )
+    pub_hdrs_file = ctx.actions.declare_file(
+        ctx.rule.attr.name + "_cc_meta_exports.json",
+    )
 
     skipped_tags = ctx.attr._skipped_tags
 
     # This seems to be the most universal target full-name.
     # cc_meta always refers to targets as @@repo//path:name, it only resolves them when hitting buildozer.
-    target_qualified_name = "@@{}//{}:{}".format(target.label.repo_name, target.label.package, target.label.name)
+    target_qualified_name = "@@{}//{}:{}".format(
+        target.label.repo_name,
+        target.label.package,
+        target.label.name,
+    )
 
     target_deviations = _find_cc_meta_deviation(target, _CC_META_DEFAULT_DEVIATIONS)
     for attr_deviations in ctx.attr._target_deviations:
         if target_deviations:
             break
-        target_deviations = _find_cc_meta_deviation(target, attr_deviations[CcMetaDeviationsInfo].deviations)
+        target_deviations = _find_cc_meta_deviation(
+            target,
+            attr_deviations[CcMetaDeviationsInfo].deviations,
+        )
     target_deviation_rules = {}
     if target_deviations:
         target_deviation_rules = json.decode(target_deviations)
@@ -253,8 +302,13 @@ def _cc_meta_aspect_impl(target, ctx):
         public_header_paths.extend(target_deviation_rules["exports"])
 
     # Add exports from direct dependencies if this target's deviation tells us to.
-    hasfwdtag = (hasattr(ctx.rule.attr, "tags") and "cc_meta_forward_exports" in ctx.rule.attr.tags)
-    hasfwddev = (("forward_exports" in target_deviation_rules) and target_deviation_rules["forward_exports"])
+    hasfwdtag = (
+        hasattr(ctx.rule.attr, "tags") and
+        "cc_meta_forward_exports" in ctx.rule.attr.tags
+    )
+    hasfwddev = (
+        "forward_exports" in target_deviation_rules
+    ) and target_deviation_rules["forward_exports"]
     if hasfwdtag or hasfwddev:
         for dep in ctx.rule.attr.deps:
             if not CcMetaInfo in dep:
@@ -263,9 +317,12 @@ def _cc_meta_aspect_impl(target, ctx):
 
     # We will skip targets that have a designated tag or deviation.
     target_should_skip = False
-    hasskiptag = (hasattr(ctx.rule.attr, "tags") and _match_lists(skipped_tags, ctx.rule.attr.tags))
-    hasskipdev = (("skip" in target_deviation_rules) and target_deviation_rules["skip"])
-    target_should_skip = (hasskipdev or hasskiptag)
+    hasskiptag = hasattr(ctx.rule.attr, "tags") and _match_lists(
+        skipped_tags,
+        ctx.rule.attr.tags,
+    )
+    hasskipdev = ("skip" in target_deviation_rules) and target_deviation_rules["skip"]
+    target_should_skip = hasskipdev or hasskiptag
 
     # Assemble the list of expected public header paths used by dependents.
 
@@ -278,32 +335,61 @@ def _cc_meta_aspect_impl(target, ctx):
     # Somewhere in external_includes or quote_includes, we'll find:
     #  bazel-out/k8-dbg/bin/external/foo_cc_proto~/_virtual_includes/foo_proto
     # But technically "_virtual_includes/foo_proto/bar/foo.pb.h" is also a valid (and very stupid) include path.
-    for direct_hdr in target[CcInfo].compilation_context.direct_public_headers + target[CcInfo].compilation_context.direct_textual_headers:
-        direct_hdr_path_is_virtual = (direct_hdr.path.count("/_virtual_includes/") > 0)
+    for direct_hdr in (
+        target[CcInfo].compilation_context.direct_public_headers +
+        target[CcInfo].compilation_context.direct_textual_headers
+    ):
+        direct_hdr_path_is_virtual = direct_hdr.path.count("/_virtual_includes/") > 0
         hacky_suffixes = []
         if hasattr(ctx.rule.attr, "includes") and not direct_hdr_path_is_virtual:
             for incl_path in ctx.rule.attr.includes:
-                hacky_suffixes.append(paths.join(target.label.package, incl_path.lstrip("/")))
+                hacky_suffixes.append(
+                    paths.join(target.label.package, incl_path.lstrip("/")),
+                )
             for hacky_suffix in hacky_suffixes:
                 if paths.starts_with(direct_hdr.path, hacky_suffix):
-                    potential_header_path = paths.relativize(direct_hdr.path, hacky_suffix)
+                    potential_header_path = paths.relativize(
+                        direct_hdr.path,
+                        hacky_suffix,
+                    )
                     public_header_paths.append(potential_header_path)
-        if hasattr(ctx.rule.attr, "strip_include_prefix") and not direct_hdr_path_is_virtual:
+        if (
+            hasattr(ctx.rule.attr, "strip_include_prefix") and
+            not direct_hdr_path_is_virtual
+        ):
             hacky_suffixes.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
-        for ext_incl in (target[CcInfo].compilation_context.includes.to_list() +
-                         target[CcInfo].compilation_context.quote_includes.to_list() +
-                         target[CcInfo].compilation_context.external_includes.to_list() +
-                         target[CcInfo].compilation_context.system_includes.to_list()):
-            if paths.normalize(ext_incl) != "." and not paths.starts_with(direct_hdr.path, ext_incl):
+        for ext_incl in (
+            target[CcInfo].compilation_context.includes.to_list() +
+            target[CcInfo].compilation_context.quote_includes.to_list() +
+            target[CcInfo].compilation_context.external_includes.to_list() +
+            target[CcInfo].compilation_context.system_includes.to_list()
+        ):
+            if paths.normalize(ext_incl) != "." and not paths.starts_with(
+                direct_hdr.path,
+                ext_incl,
+            ):
                 continue
             potential_stems = [ext_incl]
             for hacky_suffix in hacky_suffixes:
                 potential_stems.append(paths.join(ext_incl, hacky_suffix))
             if direct_hdr_path_is_virtual:
-                potential_stems.append(paths.join(ext_incl, target.label.package, "_virtual_includes", target.label.name))
+                potential_stems.append(
+                    paths.join(
+                        ext_incl,
+                        target.label.package,
+                        "_virtual_includes",
+                        target.label.name,
+                    ),
+                )
             for potential_stem in potential_stems:
-                if paths.normalize(potential_stem) == "." or paths.starts_with(direct_hdr.path, potential_stem):
-                    potential_header_path = paths.relativize(direct_hdr.path, potential_stem)
+                if paths.normalize(potential_stem) == "." or paths.starts_with(
+                    direct_hdr.path,
+                    potential_stem,
+                ):
+                    potential_header_path = paths.relativize(
+                        direct_hdr.path,
+                        potential_stem,
+                    )
                     public_header_paths.append(potential_header_path)
 
     if not ctx.rule.kind in ["cc_binary", "cc_library", "cc_test"]:
@@ -314,11 +400,16 @@ def _cc_meta_aspect_impl(target, ctx):
     # The list of exports is ready, no analysis required, write it.
     ctx.actions.write(
         output = pub_hdrs_file,
-        content = json.encode_indent([{
-            "alwaysused": target_alwaysused,
-            "exports": collections.uniq(public_header_paths),
-            "target": target_qualified_name,
-        }], indent = "  "),
+        content = json.encode_indent(
+            [
+                {
+                    "alwaysused": target_alwaysused,
+                    "exports": collections.uniq(public_header_paths),
+                    "target": target_qualified_name,
+                },
+            ],
+            indent = "  ",
+        ),
     )
 
     # The output for a skipped target is essentially just the list of exports, the rest is empty.
@@ -339,15 +430,30 @@ def _cc_meta_aspect_impl(target, ctx):
         )
         ctx.actions.write(
             output = deps_issues_file,
-            content = json.encode_indent([{
-                "matches": {},
-                "not_found": [],
-                "target": target_qualified_name,
-                "unused": [],
-            }], indent = "  "),
+            content = json.encode_indent(
+                [
+                    {
+                        "matches": {},
+                        "not_found": [],
+                        "target": target_qualified_name,
+                        "unused": [],
+                    },
+                ],
+                indent = "  ",
+            ),
         )
         return [
-            OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_all_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
+            OutputGroupInfo(
+                cc_meta = depset(
+                    [
+                        comb_incl_file,
+                        comb_all_incl_file,
+                        comb_cmd_file,
+                        pub_hdrs_file,
+                        deps_issues_file,
+                    ],
+                ),
+            ),
             CcMetaInfo(
                 direct_imports_json = comb_incl_file,
                 compile_commands_json = comb_cmd_file,
@@ -402,15 +508,28 @@ def _cc_meta_aspect_impl(target, ctx):
             if ctx.rule.attr.strip_include_prefix.startswith("/"):
                 strip_dirs.append(ctx.rule.attr.strip_include_prefix.lstrip("/"))
             else:
-                strip_dirs.append(paths.join(target.label.package, ctx.rule.attr.strip_include_prefix.lstrip("/")))
+                strip_dirs.append(
+                    paths.join(
+                        target.label.package,
+                        ctx.rule.attr.strip_include_prefix.lstrip("/"),
+                    ),
+                )
         incl_dir_lists = {
             "builtin_dirs": cc_toolchain.built_in_include_directories,
             "include_dirs": target[CcInfo].compilation_context.includes.to_list(),
             "iquote_dirs": target[CcInfo].compilation_context.quote_includes.to_list(),
-            "isystem_dirs": depset([], transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes]).to_list(),
+            "isystem_dirs": depset(
+                [],
+                transitive = [
+                    target[CcInfo].compilation_context.system_includes,
+                    target[CcInfo].compilation_context.external_includes,
+                ],
+            ).to_list(),
             "strip_dirs": strip_dirs,
         }
-        incl_dir_lists_file = ctx.actions.declare_file(ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json")
+        incl_dir_lists_file = ctx.actions.declare_file(
+            ctx.rule.attr.name + "_cc_meta_incl_dir_lists.json",
+        )
         ctx.actions.write(
             output = incl_dir_lists_file,
             content = json.encode_indent(incl_dir_lists, indent = "  "),
@@ -439,10 +558,18 @@ def _cc_meta_aspect_impl(target, ctx):
         user_flags = ctx.fragments.cpp.copts
         rule_flags = []
         rule_flags += ctx.rule.attr.copts
-        if (f.extension in _C_SOURCE) or (f.extension in _ASSEMBLER) or (f.extension in _ASSEMBLER_WITH_C_PREPROCESSOR):
+        if (
+            (f.extension in _C_SOURCE) or
+            (f.extension in _ASSEMBLER) or
+            (f.extension in _ASSEMBLER_WITH_C_PREPROCESSOR)
+        ):
             user_flags += ctx.fragments.cpp.conlyopts
             rule_flags += ctx.rule.attr.conlyopts
-        elif (f.extension in _CC_SOURCE) or (f.extension in _CC_HEADER) or (f.extension in _OBJCPP_SOURCE):
+        elif (
+            (f.extension in _CC_SOURCE) or
+            (f.extension in _CC_HEADER) or
+            (f.extension in _OBJCPP_SOURCE)
+        ):
             user_flags += ctx.fragments.cpp.cxxopts
             rule_flags += ctx.rule.attr.cxxopts
 
@@ -497,8 +624,14 @@ def _cc_meta_aspect_impl(target, ctx):
             if paths.starts_with(f.short_path, target.label.package):
                 f_pkg_rel_path = paths.relativize(f.short_path, target.label.package)
             else:
-                f_pkg_rel_path = paths.join(target.label.package, "%x" % abs(hash(f.dirname)), f.basename)
-            incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name)
+                f_pkg_rel_path = paths.join(
+                    target.label.package,
+                    "%x" % abs(hash(f.dirname)),
+                    f.basename,
+                )
+            incl_file = ctx.actions.declare_file(
+                f_pkg_rel_path + ".cc_meta_includes_for_" + target.label.name,
+            )
             incl_files.append(incl_file)
 
             # Remove stdlib flag, just to avoid warning when compiling/pre-processing without standard
@@ -522,7 +655,9 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags_no_stdlib + ["-M", "-MF", incl_file.path, "-E", "-MG"] + rule_flags,
+                user_compile_flags = user_flags_no_stdlib +
+                                     ["-M", "-MF", incl_file.path, "-E", "-MG"] +
+                                     rule_flags,
                 source_file = f.path,
                 preprocessor_defines = depset(
                     transitive = [
@@ -542,9 +677,14 @@ def _cc_meta_aspect_impl(target, ctx):
                 # explicitly via a combination of "-nostdinc++", "-nostdinc", "-idirafter", "-cxx-isystem"
                 # and "-isystem". We need to strip all that out. We must do it here, because those
                 # are probably baked into the toolchain implementation.
-                cc_incl_command_line, cc_incl_macros_files = _filter_args_for_incl_compile_clang(cc_incl_command_line)
+                (
+                    cc_incl_command_line,
+                    cc_incl_macros_files,
+                ) = _filter_args_for_incl_compile_clang(cc_incl_command_line)
             else:
-                _, cc_incl_macros_files = _filter_args_for_incl_compile_clang(cc_incl_command_line)
+                _, cc_incl_macros_files = _filter_args_for_incl_compile_clang(
+                    cc_incl_command_line,
+                )
             cc_incl_env = cc_common.get_environment_variables(
                 feature_configuration = feature_configuration,
                 action_name = action_name,
@@ -562,7 +702,9 @@ def _cc_meta_aspect_impl(target, ctx):
                 outputs = [incl_file],
             )
 
-            incl_macros_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_macros_for_" + target.label.name + ".json")
+            incl_macros_file = ctx.actions.declare_file(
+                f_pkg_rel_path + ".cc_meta_macros_for_" + target.label.name + ".json",
+            )
             ctx.actions.write(
                 output = incl_macros_file,
                 content = json.encode_indent(cc_incl_macros_files, indent = "  "),
@@ -573,7 +715,9 @@ def _cc_meta_aspect_impl(target, ctx):
 
             # Create a temporary file as 'source.cc.cc_meta_all_includes_for_target_name' because the same
             # source could appear in multiple targets (naughty!).
-            all_incl_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_all_includes_for_" + target.label.name)
+            all_incl_file = ctx.actions.declare_file(
+                f_pkg_rel_path + ".cc_meta_all_includes_for_" + target.label.name,
+            )
             all_incl_files.append(all_incl_file)
 
             # Invoke the preprocessor (-E) to get includes (-M), and with all include paths,
@@ -581,12 +725,17 @@ def _cc_meta_aspect_impl(target, ctx):
             cc_all_incl_compile_variables = cc_common.create_compile_variables(
                 feature_configuration = feature_configuration,
                 cc_toolchain = cc_toolchain,
-                user_compile_flags = user_flags + ["-M", "-MF", all_incl_file.path, "-E", "-MG"] + rule_flags,
+                user_compile_flags = user_flags +
+                                     ["-M", "-MF", all_incl_file.path, "-E", "-MG"] +
+                                     rule_flags,
                 source_file = f.path,
                 include_directories = target[CcInfo].compilation_context.includes,
                 quote_include_directories = target[CcInfo].compilation_context.quote_includes,
                 system_include_directories = depset(
-                    transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
+                    transitive = [
+                        target[CcInfo].compilation_context.system_includes,
+                        target[CcInfo].compilation_context.external_includes,
+                    ],
                 ),
                 framework_include_directories = target[CcInfo].compilation_context.framework_includes,
                 preprocessor_defines = depset(
@@ -616,7 +765,10 @@ def _cc_meta_aspect_impl(target, ctx):
                 env = cc_all_incl_env,
                 inputs = depset(
                     [f],
-                    transitive = [cc_toolchain.all_files, target[CcInfo].compilation_context.headers],
+                    transitive = [
+                        cc_toolchain.all_files,
+                        target[CcInfo].compilation_context.headers,
+                    ],
                 ),
                 outputs = [all_incl_file],
             )
@@ -624,7 +776,12 @@ def _cc_meta_aspect_impl(target, ctx):
             # Finally, use the artifacts we have obtained, i.e., all include paths,
             # direct includes, and all resolved includes to sort out what we include
             # that should/does come from a dep versus the system (built-in / sysroot).
-            dep_sys_imports_file = ctx.actions.declare_file(f_pkg_rel_path + ".cc_meta_dep_sys_imports_for_" + target.label.name + ".json")
+            dep_sys_imports_file = ctx.actions.declare_file(
+                f_pkg_rel_path +
+                ".cc_meta_dep_sys_imports_for_" +
+                target.label.name +
+                ".json",
+            )
             dep_sys_imports_files.append(dep_sys_imports_file)
 
             classify_imps_args = ctx.actions.args()
@@ -637,7 +794,9 @@ def _cc_meta_aspect_impl(target, ctx):
                 mnemonic = "CcClassifyIncludes",
                 executable = ctx.executable._identify_direct_includes,
                 arguments = [classify_imps_args],
-                inputs = depset([incl_dir_lists_file, incl_macros_file, incl_file, all_incl_file]),
+                inputs = depset(
+                    [incl_dir_lists_file, incl_macros_file, incl_file, all_incl_file],
+                ),
                 outputs = [dep_sys_imports_file],
             )
 
@@ -664,11 +823,17 @@ def _cc_meta_aspect_impl(target, ctx):
             system_include_directories = depset(
                 # Include built-in include directories in case of cross-compilation.
                 cc_toolchain.built_in_include_directories if any_rel_path else [],
-                transitive = [target[CcInfo].compilation_context.system_includes, target[CcInfo].compilation_context.external_includes],
+                transitive = [
+                    target[CcInfo].compilation_context.system_includes,
+                    target[CcInfo].compilation_context.external_includes,
+                ],
             ),
             framework_include_directories = target[CcInfo].compilation_context.framework_includes,
             preprocessor_defines = depset(
-                transitive = [target[CcInfo].compilation_context.defines, target[CcInfo].compilation_context.local_defines],
+                transitive = [
+                    target[CcInfo].compilation_context.defines,
+                    target[CcInfo].compilation_context.local_defines,
+                ],
             ),
         )
         cc_cmd_command_line = cc_common.get_memory_inefficient_command_line(
@@ -676,11 +841,18 @@ def _cc_meta_aspect_impl(target, ctx):
             action_name = action_name,
             variables = cc_cmd_compile_variables,
         )
-        comp_cmd_list.append({
-            "arguments": [cc_compiler_path] + [arg for arg in cc_cmd_command_line if arg not in _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS],
-            "directory": "",  # We'll have to get the workspace root later (see refresh.py script).
-            "file": f.path,
-        })
+        comp_cmd_list.append(
+            {
+                "arguments": [cc_compiler_path] +
+                             [
+                                 arg
+                                 for arg in cc_cmd_command_line
+                                 if arg not in _FILTER_OUT_SINGLE_ARGS_FROM_COMPILE_COMMANDS
+                             ],
+                "directory": "",  # We'll have to get the workspace root later (see refresh.py script).
+                "file": f.path,
+            },
+        )
 
     # This action combines the imports for each source file into one set of imports.
     comb_dir_imports_args = ctx.actions.args()
@@ -723,12 +895,17 @@ def _cc_meta_aspect_impl(target, ctx):
         # We can't fix them if they have issues anyways.
         ctx.actions.write(
             output = deps_issues_file,
-            content = json.encode_indent([{
-                "matches": {},
-                "not_found": [],
-                "target": target_qualified_name,
-                "unused": [],
-            }], indent = "  "),
+            content = json.encode_indent(
+                [
+                    {
+                        "matches": {},
+                        "not_found": [],
+                        "target": target_qualified_name,
+                        "unused": [],
+                    },
+                ],
+                indent = "  ",
+            ),
         )
     elif ("forward_exports" in target_deviation_rules) and target_deviation_rules["forward_exports"]:
         # If this target forwards its exports it will find itself for all its includes,
@@ -769,7 +946,17 @@ def _cc_meta_aspect_impl(target, ctx):
         )
 
     return [
-        OutputGroupInfo(cc_meta = depset([comb_incl_file, comb_all_incl_file, comb_cmd_file, pub_hdrs_file, deps_issues_file])),
+        OutputGroupInfo(
+            cc_meta = depset(
+                [
+                    comb_incl_file,
+                    comb_all_incl_file,
+                    comb_cmd_file,
+                    pub_hdrs_file,
+                    deps_issues_file,
+                ],
+            ),
+        ),
         CcMetaInfo(
             direct_imports_json = comb_incl_file,
             compile_commands_json = comb_cmd_file,
@@ -781,9 +968,7 @@ def _cc_meta_aspect_impl(target, ctx):
 
 _CC_META_DEFAULT_SKIPPED_TAGS = ["cc_meta_skip"]
 
-def cc_meta_aspect_factory(
-        deviations = [],
-        skipped_tags = []):
+def cc_meta_aspect_factory(deviations = [], skipped_tags = []):
     """
     Create a C++ metadata aspect to gather information about C++ sources.
 
@@ -854,8 +1039,10 @@ def _expand_template_impl(ctx):
         is_executable = True,
         template = ctx.file._script_template,
         substitutions = {
-            "        {target_patterns}": "\n".join(["        {},".format(repr(t)) for t in ctx.attr.targets]),
-            "{cc_meta_aspect}": "\"--aspects={}\"".format(ctx.attr.cc_meta_aspect),
+            "        {target_patterns}": "\n".join(
+                ["        {},".format(repr(t)) for t in ctx.attr.targets],
+            ),
+            "{cc_meta_aspect}": '"--aspects={}"'.format(ctx.attr.cc_meta_aspect),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -888,8 +1075,4 @@ def refresh_cc_meta(
     _expand_template(name = script_name, targets = targets, cc_meta_aspect = cc_meta_aspect)
 
     # Combine them so the wrapper calls the main script
-    py_binary(
-        name = name,
-        srcs = [script_name],
-        **kwargs
-    )
+    py_binary(name = name, srcs = [script_name], **kwargs)

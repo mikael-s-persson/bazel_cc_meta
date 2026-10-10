@@ -1,5 +1,6 @@
 load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@bazel_cc_meta//cc_meta:linters.bzl", "clang_tidy_issues_gatherer")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 # ============= Public tools =============
@@ -21,6 +22,12 @@ py_binary(
 # For custom deviations or skipped tags, see README.md or defs.bzl.
 refresh_cc_meta(
     name = "refresh_all",
+    visibility = ["//visibility:public"],
+)
+
+# Default clang-tidy report gathering script for all.
+clang_tidy_issues_gatherer(
+    name = "gather_clang_tidy_all",
     visibility = ["//visibility:public"],
 )
 
@@ -55,4 +62,30 @@ sh_binary(
     name = "run_suppress_stdout",
     srcs = ["run_suppress_stdout.sh"],
     visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "yaml_wrapper",
+    srcs = ["yaml_wrapper.py"],
+    visibility = ["//visibility:public"],
+    deps = ["@pyyaml//:yaml"],
+)
+
+py_binary(
+    name = "run_clang_tidy_on_cmd",
+    srcs = ["run_clang_tidy_on_cmd.py"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "empty_placeholder",
+    srcs = [],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "apply_clang_tidy_fixes",
+    srcs = ["apply_clang_tidy_fixes.py"],
+    visibility = ["//visibility:public"],
+    deps = [":yaml_wrapper"],
 )
