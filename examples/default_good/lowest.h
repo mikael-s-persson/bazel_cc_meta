@@ -3,6 +3,13 @@
 
 namespace cc_meta_examples {
 
+/**
+ * @brief The lowest value.
+ *
+ * This variable stores the lowest value we care about.
+ *
+ * @note This is not the lowest value imaginable.
+ */
 constexpr int kLowestValue = 42;
 
 } // namespace cc_meta_examples

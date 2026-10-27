@@ -3,6 +3,12 @@ load("@bazel_cc_meta//cc_meta:linters.bzl", "clang_tidy_issues_gatherer")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
+filegroup(
+    name = "default_doxyfile_template",
+    srcs = ["Doxyfile.template"],
+    visibility = ["//visibility:public"],
+)
+
 # ============= Public tools =============
 
 py_binary(
@@ -88,4 +94,16 @@ py_binary(
     srcs = ["apply_clang_tidy_fixes.py"],
     visibility = ["//visibility:public"],
     deps = [":yaml_wrapper"],
+)
+
+py_binary(
+    name = "run_doxygen_on_cmd",
+    srcs = ["run_doxygen_on_cmd.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "clean_doxygen_tag_file",
+    srcs = ["clean_doxygen_tag_file.py"],
+    visibility = ["//visibility:public"],
 )

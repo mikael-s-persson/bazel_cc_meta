@@ -1,5 +1,7 @@
 load("@bazel_cc_meta//cc_meta:cc_meta.bzl", "refresh_cc_meta")
+load("@bazel_cc_meta//cc_meta:doxygen.bzl", "doxyfile", "doxyfile_configurations")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("//examples/default_good:defs.bzl", "good_doxygen_central_index")
 
 cc_library(
     name = "lowest",
@@ -51,5 +53,21 @@ cc_test(
 refresh_cc_meta(
     name = "refresh",
     targets = ["//examples/default_good:all"],
+    visibility = ["//visibility:public"],
+)
+
+doxyfile(
+    name = "good_doxyfile",
+    configurations = doxyfile_configurations(
+        extract_all = True,
+    ),
+    visibility = ["//visibility:public"],
+)
+
+good_doxygen_central_index(
+    name = "good_doxygen",
+    testonly = True,
+    project_title = "Default Good Example",
+    targets = [":middle_test"],
     visibility = ["//visibility:public"],
 )

@@ -30,3 +30,14 @@ http_archive(
     strip_prefix = "pyyaml-6.0.3/lib",
     urls = ["https://github.com/yaml/pyyaml/archive/refs/tags/6.0.3.tar.gz"],
 )
+
+# Doxygen
+bazel_dep(name = "rules_doxygen", version = "2.6.4", dev_dependency = True)
+git_override(
+    module_name = "rules_doxygen",
+    commit = "11a3e3f7418660fdb82c920185536920a979ed0b",
+    remote = "https://github.com/TendTo/rules_doxygen.git",
+)
+
+doxygen_extension = use_extension("@rules_doxygen//:extensions.bzl", "doxygen_extension")
+use_repo(doxygen_extension, "doxygen")
