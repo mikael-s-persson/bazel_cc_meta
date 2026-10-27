@@ -340,6 +340,11 @@ def main():
         "--gather-into-gitlab", help="Output Code Climate JSON for gitlab CI"
     )
     parser.add_argument("--gather-into-github", help="Output SARIF file for github CI")
+    parser.add_argument(
+        "--target-pattern",
+        action="append",
+        help="Target pattern to override baked-in patterns",
+    )
     args, unknown_args = parser.parse_known_args()
 
     _ensure_cwd_is_workspace_root()
@@ -349,6 +354,9 @@ def main():
         {target_patterns}  # noqa
         # End:   template filled by Bazel
     ]
+
+    if args.target_pattern:
+        target_patterns = args.target_pattern
 
     target_list = _get_target_list(target_patterns, unknown_args)
     tidy_version = "0.0.0"
