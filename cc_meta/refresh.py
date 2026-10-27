@@ -11,6 +11,7 @@ Interface (after template expansion):
 - Output: a dependency_issues.json to list dependency issues with each discovered target
 """
 
+import argparse
 import json
 import os
 import pathlib
@@ -18,14 +19,14 @@ import subprocess
 import sys
 
 
-def _get_target_list(target_patterns: list):
+def _get_target_list(target_patterns: list, unknown_args: list):
     print(">>> Listing targets from: {}".format(" ".join(target_patterns)))
 
     common_flags = [
         # Shush logging. Just for readability.
         "--ui_event_filters=-info",
         "--noshow_progress",
-    ] + sys.argv[1:]
+    ] + unknown_args
 
     # Query C++ rules below each target pattern
     target_list = set()
@@ -130,7 +131,9 @@ def _prefix_include_paths(arguments: list, rel_execroot, rel_output_base):
     return arguments
 
 
-def _gather_cc_meta(target_list: list, top_dir: str, rel_execroot, rel_output_base):
+def _gather_cc_meta(
+    target_list: list, top_dir: str, rel_execroot, rel_output_base, unknown_args: list
+):
     print(">>> Analyzing cc-meta-info...")
 
     common_flags = [
@@ -147,7 +150,7 @@ def _gather_cc_meta(target_list: list, top_dir: str, rel_execroot, rel_output_ba
         "-k",
         # Skip incompatible explicit targets listed (approximate cquery)
         "--skip_incompatible_explicit_targets",
-    ] + sys.argv[1:]
+    ] + unknown_args
 
     target_build_args = (
         [
@@ -175,7 +178,7 @@ def _gather_cc_meta(target_list: list, top_dir: str, rel_execroot, rel_output_ba
 
     targets_by_export = {}
 
-    verbose_output = ("--sandbox_debug" in sys.argv[1:]) or ("-s" in sys.argv[1:])
+    verbose_output = ("--sandbox_debug" in unknown_args) or ("-s" in unknown_args)
 
     for out_ln in target_build_process.stderr.splitlines():
         out_ln_str = out_ln.decode()
@@ -444,6 +447,19 @@ def _get_workspace_output_base(ws_root, ws_rel_execroot):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        prog="RefreshCcMetadata",
+        description="Refreshes cc metadata from a Bazel aspect.",
+    )
+
+    parser.add_argument(
+        "--target-pattern",
+        action="append",
+        help="Target pattern to override baked-in patterns",
+    )
+
+    args, unknown_args = parser.parse_known_args()
+
     workspace_root = _ensure_cwd_is_workspace_root()
 
     workspace_execroot = _get_workspace_exec_root(workspace_root)
@@ -456,11 +472,15 @@ def main():
         # End:   template filled by Bazel
     ]
 
+    if args.target_pattern:
+        target_patterns = args.target_pattern
+
     comp_cmds, exports, deps_issues = _gather_cc_meta(
-        _get_target_list(target_patterns),
+        _get_target_list(target_patterns, unknown_args),
         str(workspace_root),
         rel_execroot,
         rel_output_base,
+        unknown_args,
     )
 
     if not comp_cmds:
